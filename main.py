@@ -16,10 +16,14 @@ from config import (
     REQUIRED_CONFIRMATIONS,
     UNKNOWN_CONFIRMATIONS,
     UNKNOWN_DELAY_SECONDS,
+    NIGHT_UNKNOWN_DELAY_SECONDS,
     ALLOWED_START_HOUR,
     ALLOWED_END_HOUR,
     SNAPSHOT_INTERVAL,
     FRAME_SCALE,
+    DETECTION_SCALE,
+    MIN_FACE_SIZE,
+    ENABLE_CNN_FALLBACK,
     FAMILY_DIR,
     SNAPSHOT_DIR,
     LOG_DIR,
@@ -238,6 +242,46 @@ def recognize_face(
     return "UNKNOWN", best_distance
 
 
+# ── Phase 3: Enhanced face detection ───────────────────────────────────
+
+def detect_faces_enhanced(rgb_frame_small: np.ndarray, rgb_frame_full: np.ndarray):
+    """Detect faces using HOG first, then CNN fallback if nothing found.
+    Returns (locations, encodings) tuples in the SMALL-frame coordinate system.
+    """
+    # Try HOG on the small (enhanced) frame
+    locations = face_recognition.face_locations(rgb_frame_small, model="hog")
+
+    # Filter tiny detections
+    filtered = []
+    for (t, r, b, l) in locations:
+        face_h = b - t
+        if face_h >= MIN_FACE_SIZE:
+            filtered.append((t, r, b, l))
+    locations = filtered
+
+    # If HOG found nothing AND CNN is enabled, try CNN on the full-res frame
+    if len(locations) == 0 and ENABLE_CNN_FALLBACK:
+        try:
+            locations = face_recognition.face_locations(rgb_frame_full, model="cnn")
+            # Scale CNN locations DOWN to small-frame coords
+            scale_factor = DETECTION_SCALE  # CNN was run on full-res, need to scale
+            scaled = []
+            for (t, r, b, l) in locations:
+                face_h = b - t
+                if face_h >= MIN_FACE_SIZE * int(1 / DETECTION_SCALE):
+                    st = int(t * DETECTION_SCALE)
+                    sr = int(r * DETECTION_SCALE)
+                    sb = int(b * DETECTION_SCALE)
+                    sl = int(l * DETECTION_SCALE)
+                    scaled.append((st, sr, sb, sl))
+            locations = scaled
+        except Exception:
+            pass  # CNN model may not be available; silently fall back
+
+    encodings = face_recognition.face_encodings(rgb_frame_small, locations)
+    return locations, encodings
+
+
 # True only during the allowed hours of the day
 def is_allowed_time():
 
@@ -386,10 +430,7 @@ if not camera.isOpened():
     )
 
 
-# Counters to track family and unknown detection
-family_candidate = None
-family_count = 0
-
+# Counters to track unknown detection
 unknown_count = 0
 unknown_start = None
 
@@ -414,12 +455,32 @@ while running:
         continue
 
 
-    # Shrink the frame so recognition runs faster
+    # ── Phase 2: Image enhancement ──
+    # Auto gamma correction — brighten dark frames, dim overexposed
+    lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
+    l, a, b = cv2.split(lab)
+    brightness = l.mean()
+    # gamma mapping: 0.6-1.4 range, 1.0 at mid brightness ~128
+    gamma = 1.0 + (0.4 * (128.0 - brightness) / 128.0)
+    gamma = np.clip(gamma, 0.6, 1.4)
+    lut = np.array([pow(i / 255.0, gamma) * 255 for i in range(256)]).astype("uint8")
+    l = cv2.LUT(l, lut)
+
+    # CLAHE contrast enhancement on luminance
+    clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
+    l = clahe.apply(l)
+    enhanced = cv2.merge([l, a, b])
+    enhanced = cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
+
+    # Light denoising (bilateral filter preserves edges)
+    enhanced = cv2.bilateralFilter(enhanced, d=5, sigmaColor=30, sigmaSpace=30)
+
+    # ── Downscale for recognition speed ──
     small_frame = cv2.resize(
-        frame,
+        enhanced,
         (0, 0),
-        fx=FRAME_SCALE,
-        fy=FRAME_SCALE
+        fx=DETECTION_SCALE,
+        fy=DETECTION_SCALE
     )
 
     rgb_frame = cv2.cvtColor(
@@ -427,21 +488,14 @@ while running:
         cv2.COLOR_BGR2RGB
     )
 
+    # Full-resolution frame for CNN fallback
+    rgb_full = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
     # Find all faces and their encodings in this frame
-    locations = face_recognition.face_locations(
-        rgb_frame,
-        model="hog"
-    )
-
-    encodings = face_recognition.face_encodings(
-        rgb_frame,
-        locations
-    )
+    locations, encodings = detect_faces_enhanced(rgb_frame, rgb_full)
 
 
     recognized_people = []
-
     unknown_faces = []
 
 
@@ -474,10 +528,11 @@ while running:
 
         top, right, bottom, left = location
 
-        top = int(top / FRAME_SCALE)
-        right = int(right / FRAME_SCALE)
-        bottom = int(bottom / FRAME_SCALE)
-        left = int(left / FRAME_SCALE)
+        scale = DETECTION_SCALE
+        top = int(top / scale)
+        right = int(right / scale)
+        bottom = int(bottom / scale)
+        left = int(left / scale)
 
 
         # Unknown faces are drawn red, family members green
@@ -516,6 +571,9 @@ while running:
 
     # Handle unknown faces: start timer, save snapshots, raise alarm
 
+    # Use shorter delay during OUTSIDE allowed hours (night mode)
+    active_delay = NIGHT_UNKNOWN_DELAY_SECONDS if not is_allowed_time() else UNKNOWN_DELAY_SECONDS
+
     if unknown_faces:
 
         unknown_count += 1
@@ -549,7 +607,7 @@ while running:
 
             remaining = max(
                 0,
-                UNKNOWN_DELAY_SECONDS
+                active_delay
                 -
                 elapsed
             )
@@ -604,7 +662,7 @@ while running:
 
             if (
                 elapsed
-                >= UNKNOWN_DELAY_SECONDS
+                >= active_delay
             ):
 
                 start_siren()
@@ -640,6 +698,10 @@ while running:
             2
         )
 
+        # Log family member sightings (rate-limited)
+        for person in unique_people:
+            log_event("FAMILY_SIGHTING", person=person)
+
 
     # Show whether we're inside the allowed hours
 
@@ -648,13 +710,13 @@ while running:
     time_text = (
         "ALLOWED TIME"
         if allowed
-        else "OUTSIDE ALLOWED TIME"
+        else "🌙 NIGHT MODE"
     )
 
     time_color = (
         (0, 255, 0)
         if allowed
-        else (0, 0, 255)
+        else (200, 150, 0)
     )
 
     cv2.putText(
