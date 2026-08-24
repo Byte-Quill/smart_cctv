@@ -43,6 +43,18 @@ AUTO_CAPTURE_STABLE_FRAMES = 8
 # Enable CNN fallback detection when HOG finds nothing
 ENABLE_CNN_FALLBACK = True
 
+# Temporal ensemble: classify based on majority vote over N frames per tracked face
+ENSEMBLE_FRAMES = 5
+
+# Face tracking: run full detection every N frames (1 = every frame)
+TRACKING_SKIP_FRAMES = 2
+
+# Exponential moving average alpha for bounding box smoothing (0.0-1.0, higher = faster tracking)
+TRACKING_SMOOTH_ALPHA = 0.6
+
+# How many frames to keep a track alive after the face disappears
+TRACKING_PATIENCE = 5
+
 # Folder paths
 FAMILY_DIR = "family"
 SNAPSHOT_DIR = "snapshots"

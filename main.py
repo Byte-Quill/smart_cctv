@@ -7,6 +7,7 @@ import sqlite3
 import logging
 
 from datetime import datetime
+from collections import deque
 
 import pygame
 
@@ -24,6 +25,10 @@ from config import (
     DETECTION_SCALE,
     MIN_FACE_SIZE,
     ENABLE_CNN_FALLBACK,
+    ENSEMBLE_FRAMES,
+    TRACKING_SKIP_FRAMES,
+    TRACKING_SMOOTH_ALPHA,
+    TRACKING_PATIENCE,
     FAMILY_DIR,
     SNAPSHOT_DIR,
     LOG_DIR,
@@ -215,7 +220,7 @@ def recognize_face(
 ):
 
     if not known_encodings:
-        return "UNKNOWN", None
+        return "UNKNOWN", None, 0.0
 
     distances = face_recognition.face_distance(
         known_encodings,
@@ -231,15 +236,19 @@ def recognize_face(
         distances[best_index]
     )
 
+    # Compute confidence: 1.0 = perfect match, 0.0 = at threshold or worse
+    confidence = max(0.0, min(1.0, 1.0 - (best_distance / FACE_TOLERANCE)))
+
     # Only a match if the distance is small enough
     if best_distance <= FACE_TOLERANCE:
 
         return (
             known_names[best_index],
-            best_distance
+            best_distance,
+            confidence
         )
 
-    return "UNKNOWN", best_distance
+    return "UNKNOWN", best_distance, confidence
 
 
 # ── Phase 3: Enhanced face detection ───────────────────────────────────
@@ -280,6 +289,144 @@ def detect_faces_enhanced(rgb_frame_small: np.ndarray, rgb_frame_full: np.ndarra
 
     encodings = face_recognition.face_encodings(rgb_frame_small, locations)
     return locations, encodings
+
+
+# ── Phase 4: Temporal ensemble tracking ────────────────────────────────
+
+class FaceHistory:
+    """Rolling classification history for one tracked face."""
+    def __init__(self, window: int = ENSEMBLE_FRAMES):
+        self.window = window
+        self.classes: deque = deque(maxlen=window)
+        self.confidences: deque = deque(maxlen=window)
+        self.encoding_history: deque = deque(maxlen=window)
+
+    def add(self, name: str, confidence: float, encoding: np.ndarray | None):
+        self.classes.append(name)
+        self.confidences.append(confidence)
+        if encoding is not None:
+            self.encoding_history.append(encoding)
+
+    @property
+    def majority_name(self) -> str:
+        """Return the majority-vote name over the window."""
+        if not self.classes:
+            return "UNKNOWN"
+        from collections import Counter
+        counts = Counter(self.classes)
+        return counts.most_common(1)[0][0]
+
+    @property
+    def avg_confidence(self) -> float:
+        """Mean confidence over the window."""
+        if not self.confidences:
+            return 0.0
+        return float(np.mean(self.confidences))
+
+
+class FaceTrack:
+    """Track state for one face: smoothed location, classification history, patience."""
+    def __init__(self, location: tuple[int, int, int, int], name: str, confidence: float, encoding: np.ndarray | None):
+        self.history = FaceHistory()
+        self.history.add(name, confidence, encoding)
+        # Smoothed location (full-resolution coords)
+        self.smoothed = location
+        self.patience = TRACKING_PATIENCE  # frames remaining before expiry
+        self.last_seen = location
+
+    def update(self, location: tuple[int, int, int, int], name: str, confidence: float, encoding: np.ndarray | None):
+        self.history.add(name, confidence, encoding)
+        # EMA smoothing on each coordinate
+        a = TRACKING_SMOOTH_ALPHA
+        self.smoothed = tuple(
+            int(a * loc_coord + (1 - a) * smooth_coord)
+            for loc_coord, smooth_coord in zip(location, self.smoothed)
+        )
+        self.last_seen = location
+        self.patience = TRACKING_PATIENCE  # reset patience
+
+    def decay_patience(self):
+        self.patience -= 1
+
+    @property
+    def is_alive(self) -> bool:
+        return self.patience > 0
+
+    @property
+    def majority_name(self) -> str:
+        return self.history.majority_name
+
+    @property
+    def avg_confidence(self) -> float:
+        return self.history.avg_confidence
+
+
+TrackDict = dict[int, FaceTrack]
+
+
+def _centroid(location) -> tuple[int, int]:
+    top, right, bottom, left = location
+    return ((left + right) // 2, (top + bottom) // 2)
+
+
+def match_tracks(
+    current_faces: list,
+    prev_tracks: TrackDict,
+    _frame_counter: int
+) -> TrackDict:
+    """
+    Match current-frame face locations to existing tracks by centroid distance.
+    - On detection frames: matches detections to tracks
+    - On skip frames: decays patience, keeps tracks alive
+    Returns updated {track_id: FaceTrack} dict.
+    """
+    new_tracks: TrackDict = {}
+
+    # On skip frames, just decay all tracks and return
+    if _frame_counter % TRACKING_SKIP_FRAMES != 0:
+        for tid, track in prev_tracks.items():
+            track.decay_patience()
+            if track.is_alive:
+                new_tracks[tid] = track
+        return new_tracks
+
+    matched = set()
+    next_id = max(prev_tracks.keys(), default=-1) + 1
+
+    for _loc, name, conf, enc in current_faces:
+        best_id = -1
+        best_dist = 60  # centroid distance threshold (detection-scale pixels)
+        cx, cy = _centroid(_loc)
+        for tid, track in prev_tracks.items():
+            if tid in matched:
+                continue
+            tcx, tcy = _centroid(track.last_seen)
+            d = ((cx - tcx) ** 2 + (cy - tcy) ** 2) ** 0.5
+            if d < best_dist:
+                best_dist = d
+                best_id = tid
+        if best_id >= 0:
+            matched.add(best_id)
+            track = prev_tracks[best_id]
+            track.update(_loc, name, conf, enc)
+            new_tracks[best_id] = track
+        else:
+            new_tracks[next_id] = FaceTrack(_loc, name, conf, enc)
+            next_id += 1
+
+    # Keep unmatched tracks alive (patience decay)
+    for tid, track in prev_tracks.items():
+        if tid not in matched:
+            track.decay_patience()
+            if track.is_alive:
+                new_tracks[tid] = track
+
+    return new_tracks
+
+
+# Global tracking state
+_tracked_faces: TrackDict = {}
+_frame_counter = 0
 
 
 # True only during the allowed hours of the day
@@ -492,81 +639,65 @@ while running:
     rgb_full = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
     # Find all faces and their encodings in this frame
-    locations, encodings = detect_faces_enhanced(rgb_frame, rgb_full)
+    # Phase 5: Skip detection on non-detection frames
+    if _frame_counter % TRACKING_SKIP_FRAMES == 0:
+        locations, encodings = detect_faces_enhanced(rgb_frame, rgb_full)
+    else:
+        locations, encodings = [], []  # rely on track persistence
 
 
-    recognized_people = []
-    unknown_faces = []
+    # ── Phase 5: Track with smoothing and frame-skip ──
+    raw_faces = []  # (location, name, confidence, encoding)
 
-
-    # Classify every detected face
-    for encoding, location in zip(
-        encodings,
-        locations
-    ):
-
-        name, distance = recognize_face(
+    for encoding, location in zip(encodings, locations):
+        name, distance, confidence = recognize_face(
             encoding,
             known_encodings,
             known_names
         )
+        raw_faces.append((location, name, confidence, encoding))
 
-        if name == "UNKNOWN":
+    # Update tracks
+    prev = _tracked_faces
+    _tracked_faces = match_tracks(raw_faces, prev, _frame_counter)
 
-            unknown_faces.append(
-                location
-            )
+    # Build final classification from majority vote
+    recognized_people = []
+    unknown_faces = []
+    displayed_faces = []  # (fullres_location, label, color, confidence)
 
-        else:
+    for tid, track in _tracked_faces.items():
+        final_name = track.majority_name
+        conf = track.avg_confidence
 
-            recognized_people.append(
-                name
-            )
-
-
-        # Convert coordinates back to the full-size frame
-
-        top, right, bottom, left = location
-
+        # Use smoothed location, convert to full-res coords
+        top, right, bottom, left = track.smoothed
         scale = DETECTION_SCALE
-        top = int(top / scale)
-        right = int(right / scale)
-        bottom = int(bottom / scale)
-        left = int(left / scale)
+        ftop, fright, fbottom, fleft = (
+            int(top / scale), int(right / scale),
+            int(bottom / scale), int(left / scale)
+        )
 
-
-        # Unknown faces are drawn red, family members green
-        if name == "UNKNOWN":
-
-            color = (0, 0, 255)
-
-            label = "UNKNOWN"
-
+        if final_name == "UNKNOWN":
+            unknown_faces.append(track.last_seen)
+            displayed_faces.append(((fleft, ftop, fright, fbottom), "UNKNOWN", (0, 0, 255), conf))
         else:
+            recognized_people.append(final_name)
+            conf_pct = int(conf * 100)
+            displayed_faces.append(((fleft, ftop, fright, fbottom), f"{final_name} {conf_pct}%", (0, 255, 0), conf))
 
-            color = (0, 255, 0)
+    # Draw all tracked faces with smoothed boxes
+    for ((lx, ty, rx, by), label, color, conf) in displayed_faces:
+        cv2.rectangle(frame, (lx, ty), (rx, by), color, 2)
+        cv2.putText(frame, label, (lx, max(30, ty - 10)),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
 
-            label = name
+        # Confidence bar (green/amber/red)
+        bar_len = int((rx - lx) * conf)
+        bar_color = (0, 255, 0) if conf > 0.6 else (0, 255, 255) if conf > 0.3 else (0, 0, 255)
+        cv2.rectangle(frame, (lx, by + 6), (lx + bar_len, by + 14), bar_color, -1)
 
-
-        cv2.rectangle(
-            frame,
-            (left, top),
-            (right, bottom),
-            color,
-            2
-        )
-
-
-        cv2.putText(
-            frame,
-            label,
-            (left, max(30, top - 10)),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.8,
-            color,
-            2
-        )
+    _frame_counter += 1
 
 
     # Handle unknown faces: start timer, save snapshots, raise alarm
