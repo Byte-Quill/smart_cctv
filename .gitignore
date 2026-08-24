@@ -1,0 +1,27 @@
+# Python virtual environment
+.venv/
+venv/
+env/
+
+# Byte-compiled / optimized files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+*.egg-info/
+*.egg
+dist/
+build/
+
+# C compiler / build artifacts (dlib, etc.)
+*.so
+
+# Face recognition data / snapshots created at runtime
+family/
+snapshots/
+logs/
+
+# Environment / local config
+.env
+.env.*
