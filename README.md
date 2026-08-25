@@ -364,6 +364,17 @@ All tunable parameters in `config.py`:
 
 ---
 
+## 💛 Animal Detection Integration
+
+Added YOLOv8n-based animal detection to suppress sirens for animals and enforce 1-second delay for humans. Key updates:
+
+- Real-time object recognition using YOLOv8n model
+- Animal detection suppresses siren activation
+- Human detection triggers 1-second delay before siren
+- Configuration parameters `ANIMAL_DETECTION_ENABLED` and `UNKNOWN_HUMAN_DELAY_SECONDS` in `config.py`
+
+---
+
 ## 🗄 Database Schema
 
 **File:** `logs/events.db`
