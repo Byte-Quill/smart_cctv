@@ -12,6 +12,7 @@ from config import (
     CAMERA_WIDTH,
     CAMERA_HEIGHT,
     FAMILY_DIR,
+    TARGET_PHOTOS,
     AUTO_CAPTURE_STABLE_FRAMES,
 )
 
@@ -26,11 +27,7 @@ from cctv.quality import (
 )
 
 
-TARGET_PHOTOS = 10  # photos we want per person
-
-
 def main() -> None:
-
     print("=" * 52)
     print("        SMART CCTV  —  FAMILY REGISTRATION")
     print("=" * 52)
@@ -47,12 +44,14 @@ def main() -> None:
         print("ERROR: Invalid name (use letters, numbers, spaces, dashes).")
         return
 
+    # ── 2. Prepare the person's folder for stored photos ──────────────
     folder = os.path.join(FAMILY_DIR, safe_name)
     os.makedirs(folder, exist_ok=True)
 
-    # Load any existing photos of this person (re-registration)
+    # Load any existing photos of this person (re-registration).
     existing_encodings = load_existing_encodings(folder)
 
+    # ── 3. Open the camera at the configured resolution ───────────────
     print(f"\nOpening camera (index {CAMERA_INDEX}) …")
     camera = cv2.VideoCapture(CAMERA_INDEX)
     if not camera.isOpened():
@@ -62,7 +61,7 @@ def main() -> None:
     camera.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_WIDTH)
     camera.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_HEIGHT)
 
-    # ── state ──────────────────────────────────────────────────────────
+    # ── 4. State used while scanning frames ───────────────────────────
     captured = 0
     skipped_blurry = 0
     skipped_dup = 0
@@ -75,6 +74,7 @@ def main() -> None:
     print("  Good captures are taken automatically.")
     print("  Press  Q  to quit early.\n")
 
+    # ── 5. Main capture loop ──────────────────────────────────────────
     while True:
         ret, frame = camera.read()
         if not ret:
