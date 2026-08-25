@@ -1,5 +1,7 @@
 """YOLOv8 object detection used to suppress false alarms caused by animals."""
 
+from collections import deque
+
 from cctv.storage import logger
 
 
@@ -11,11 +13,23 @@ ANIMAL_CLASS_IDS = frozenset(         # bird, cat, dog, horse, sheep,
 
 
 class ObjectDetector:
-    """Thin wrapper around YOLOv8 for animal/human classification."""
+    """YOLOv8 animal/human classification with a majority-vote window.
 
-    def __init__(self, enabled: bool = True, weights: str = "yolov8n.pt"):
+    A single frame can misclassify (a dog walking past, a TV face).
+    Decisions are smoothed over the last ``window`` detections so the
+    siren is only suppressed when animals consistently explain the scene.
+    """
+
+    def __init__(
+        self,
+        enabled: bool = True,
+        weights: str = "yolov8n.pt",
+        window: int = 5,
+    ):
         self.enabled = enabled
         self.model = None
+        self.window = window
+        self._votes: deque = deque(maxlen=window)
 
         if not enabled:
             return
@@ -47,4 +61,17 @@ class ObjectDetector:
                 elif class_id in ANIMAL_CLASS_IDS:
                     animal_seen = True
 
-        return animal_seen, human_seen
+        self._votes.append((animal_seen, human_seen))
+        return self.majority()
+
+    def majority(self) -> tuple[bool, bool]:
+        """Majority vote over the recent detection window."""
+        if not self._votes:
+            return False, False
+        animals = sum(1 for a, _ in self._votes if a)
+        humans = sum(1 for _, h in self._votes if h)
+        half = len(self._votes) / 2
+        return animals > half, humans > half
+
+    def reset(self):
+        self._votes.clear()
