@@ -794,7 +794,7 @@ while running:
             if (
                 elapsed
                 >= active_delay
-            ):
+            ) && is_allowed_time():
 
                 start_siren()
 
