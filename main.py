@@ -137,6 +137,8 @@ def main():
     # Last YOLO result, reused between throttled detection runs
     animal_seen, human_seen = False, False
 
+    reconnect_attempts = 0
+
     running = True
 
     # Main camera loop
@@ -146,9 +148,25 @@ def main():
 
         if not ret:
 
-            print("WARNING: Camera frame unavailable.")
+            # Reconnect with exponential backoff instead of a fixed sleep
+            wait = min(30, 2 ** reconnect_attempts)
+            print(
+                f"WARNING: Camera frame unavailable. "
+                f"Retrying in {wait}s (attempt {reconnect_attempts + 1})."
+            )
 
-            time.sleep(0.5)
+            camera.release()
+            time.sleep(wait)
+
+            camera = cv2.VideoCapture(CAMERA_INDEX)
+            camera.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+            camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+
+            reconnect_attempts += 1
+
+            if camera.isOpened():
+                reconnect_attempts = 0
+                motion.reset()  # avoid a motion spike after reconnect
 
             continue
 
