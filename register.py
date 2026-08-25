@@ -1,50 +1,31 @@
-import cv2
-import face_recognition
-import numpy as np
+"""Family member registration: guided auto-capture of quality face photos."""
+
 import os
 import time
 
-from config import CAMERA_INDEX, FAMILY_DIR
+import cv2
+import face_recognition
+import numpy as np
 
-# ─── Quality thresholds (you can tune these) ───────────────────────────
-MIN_FACE_SIZE = 80            # minimum face height in pixels (full-res)
-BLUR_THRESHOLD = 80           # lower = blurrier; skip below this
-MIN_BRIGHTNESS = 40           # mean pixel brightness 0-255; skip if darker
-MAX_BRIGHTNESS = 215          # skip if brighter
-MIN_ENCODING_DISTANCE = 0.25  # skip if too similar to an already-captured photo
-TARGET_PHOTOS = 10            # photos we want per person
-AUTO_CAPTURE_STABLE_FRAMES = 8  # how many consecutive good frames before capture
+from config import (
+    CAMERA_INDEX,
+    FAMILY_DIR,
+    AUTO_CAPTURE_STABLE_FRAMES,
+)
 
-# ─── helpers ───────────────────────────────────────────────────────────
-
-def estimate_blur(gray: np.ndarray) -> float:
-    """Laplacian variance — lower values mean more blur."""
-    return cv2.Laplacian(gray, cv2.CV_64F).var()
-
-
-def compute_encoding(rgb_face: np.ndarray) -> np.ndarray | None:
-    """Return 128-d encoding or None if no face is visible."""
-    locs = face_recognition.face_locations(rgb_face, model="hog")
-    if len(locs) != 1:
-        return None
-    encs = face_recognition.face_encodings(rgb_face, locs)
-    return encs[0] if encs else None
+from cctv.quality import (
+    estimate_blur,
+    brightness_ok,
+    blur_ok,
+    face_large_enough,
+    compute_encoding,
+    load_existing_encodings,
+    is_duplicate_pose,
+)
 
 
-def load_existing_encodings(folder: str) -> list:
-    """Load all previously captured photos in *folder* and return encodings."""
-    encodings = []
-    for fname in sorted(os.listdir(folder)):
-        if not fname.lower().endswith((".jpg", ".jpeg", ".png")):
-            continue
-        img = face_recognition.load_image_file(os.path.join(folder, fname))
-        enc = compute_encoding(img)
-        if enc is not None:
-            encodings.append(enc)
-    return encodings
+TARGET_PHOTOS = 10  # photos we want per person
 
-
-# ─── main registration flow ────────────────────────────────────────────
 
 def main() -> None:
 
@@ -57,7 +38,9 @@ def main() -> None:
         print("ERROR: Name cannot be empty.")
         return
 
-    safe_name = "".join(c for c in name if c.isalnum() or c in (" ", "_", "-")).strip()
+    safe_name = "".join(
+        c for c in name if c.isalnum() or c in (" ", "_", "-")
+    ).strip()
     if not safe_name:
         print("ERROR: Invalid name (use letters, numbers, spaces, dashes).")
         return
@@ -120,30 +103,24 @@ def main() -> None:
 
             # Quality check chain ──
             # 1) minimum size
-            if face_h >= MIN_FACE_SIZE:
+            if face_large_enough(face_h):
                 # 2) brightness
-                if MIN_BRIGHTNESS <= brightness <= MAX_BRIGHTNESS:
+                if brightness_ok(brightness):
                     # 3) blur
                     blur_val = estimate_blur(gray[top:bottom, left:right])
-                    if blur_val >= BLUR_THRESHOLD:
+                    if blur_ok(blur_val):
                         # 4) encoding + duplicate check
                         face_roi = rgb[top:bottom, left:right]
                         if face_roi.size > 0:
                             enc = compute_encoding(face_roi)
                             if enc is not None:
-                                # compare against *all* known encodings
+                                # compare against all known encodings
                                 all_encs = existing_encodings
                                 # also compare against the last captured
                                 if last_encoding is not None:
                                     all_encs = all_encs + [last_encoding]
 
-                                is_new = True
-                                if all_encs:
-                                    dists = face_recognition.face_distance(all_encs, enc)
-                                    if dists.min() < MIN_ENCODING_DISTANCE:
-                                        is_new = False
-
-                                if is_new:
+                                if not is_duplicate_pose(enc, all_encs):
                                     face_encoding = enc
                                     quality_ok = True
                                 else:
@@ -159,7 +136,7 @@ def main() -> None:
                                 print("  [SKIP]  empty face region")
                     else:
                         if stable_frames == 0:
-                            print(f"  [SKIP]  blurry ({blur_val:.0f} < {BLUR_THRESHOLD})")
+                            print(f"  [SKIP]  blurry ({blur_val:.0f})")
                         skipped_blurry += 1
                 else:
                     if stable_frames == 0:
@@ -167,7 +144,7 @@ def main() -> None:
                     skipped_badlight += 1
             else:
                 if stable_frames == 0:
-                    print(f"  [SKIP]  face too small ({face_h}px < {MIN_FACE_SIZE})")
+                    print(f"  [SKIP]  face too small ({face_h}px)")
 
         else:
             if stable_frames % 30 == 0:

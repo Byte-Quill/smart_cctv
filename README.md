@@ -411,10 +411,20 @@ sqlite3 logs/events.db "SELECT * FROM events ORDER BY id DESC LIMIT 10;"
 ```
 .
 ├── config.py           # All configurable settings & thresholds
-├── main.py             # CCTV monitoring / recognition loop
+├── main.py             # Thin orchestrator: wires the cctv/ modules into the loop
 ├── register.py         # Family member registration tool
 ├── README.md           # This file
 ├── .gitignore          # Git ignore rules
+│
+├── cctv/               # Modular pipeline components
+│   ├── __init__.py
+│   ├── enhance.py      # Frame preprocessing (gamma, CLAHE, denoise)
+│   ├── faces.py        # Face detection, encoding, recognition
+│   ├── tracking.py     # Temporal tracking & majority-vote identity
+│   ├── siren.py        # Siren audio control
+│   ├── yolo.py         # YOLOv8 animal/human detection (alarm suppression)
+│   ├── quality.py      # Registration quality checks (blur, brightness, dupes)
+│   └── storage.py      # SQLite + file event logging
 │
 ├── family/             # Registered family photos (one folder per person)
 │   └── <name>/
