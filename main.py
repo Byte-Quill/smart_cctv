@@ -42,6 +42,13 @@ from cctv.faces import (
     recognize_face,
     detect_faces_enhanced,
 )
+from cctv.hud import (
+    draw_face_boxes,
+    draw_countdown,
+    draw_family_text,
+    draw_mode,
+    draw_status,
+)
 from cctv.motion import MotionDetector
 from cctv.tracking import match_tracks
 from cctv.siren import Siren
@@ -254,22 +261,7 @@ def main():
                 )
 
         # Draw all tracked faces with smoothed boxes
-        for ((lx, ty, rx, by), label, color, conf) in displayed_faces:
-            cv2.rectangle(frame, (lx, ty), (rx, by), color, 2)
-            cv2.putText(frame, label, (lx, max(30, ty - 10)),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
-
-            # Confidence bar (green/amber/red)
-            bar_len = int((rx - lx) * conf)
-            bar_color = (
-                (0, 255, 0) if conf > 0.6
-                else (0, 255, 255) if conf > 0.3
-                else (0, 0, 255)
-            )
-            cv2.rectangle(
-                frame, (lx, by + 6), (lx + bar_len, by + 14),
-                bar_color, -1
-            )
+        draw_face_boxes(frame, displayed_faces)
 
         frame_counter += 1
 
@@ -362,16 +354,7 @@ def main():
                     last_snapshot = time.time()
 
                 # Show countdown on screen
-
-                cv2.putText(
-                    frame,
-                    f"UNKNOWN - {remaining:.1f}s",
-                    (20, 40),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    1,
-                    (0, 0, 255),
-                    3
-                )
+                draw_countdown(frame, remaining)
 
                 # Trigger the siren once the delay has passed,
                 # unless an animal (and no human) explains the scene
@@ -398,21 +381,7 @@ def main():
                 set(recognized_people)
             )
 
-            text = (
-                "Family: "
-                +
-                ", ".join(unique_people)
-            )
-
-            cv2.putText(
-                frame,
-                text,
-                (20, 80),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.8,
-                (0, 255, 0),
-                2
-            )
+            draw_family_text(frame, unique_people)
 
             # Log family member sightings (rate-limited per person)
             now = time.time()
@@ -423,53 +392,11 @@ def main():
 
         # Show whether we're inside the allowed hours
 
-        allowed = is_allowed_time()
-
-        time_text = (
-            "ALLOWED TIME"
-            if allowed
-            else "NIGHT MODE"
-        )
-
-        time_color = (
-            (0, 255, 0)
-            if allowed
-            else (200, 150, 0)
-        )
-
-        cv2.putText(
-            frame,
-            time_text,
-            (20, frame.shape[0] - 50),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.7,
-            time_color,
-            2
-        )
+        draw_mode(frame, is_allowed_time())
 
         # Show overall system status (alarm on or ok)
 
-        status = (
-            "ALARM ACTIVE"
-            if siren.is_active
-            else "SYSTEM OK"
-        )
-
-        status_color = (
-            (0, 0, 255)
-            if siren.is_active
-            else (0, 255, 0)
-        )
-
-        cv2.putText(
-            frame,
-            status,
-            (20, frame.shape[0] - 15),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.7,
-            status_color,
-            2
-        )
+        draw_status(frame, siren.is_active)
 
         # Show the current camera frame
 
