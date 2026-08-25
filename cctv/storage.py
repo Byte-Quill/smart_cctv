@@ -4,9 +4,9 @@ import logging
 import os
 import sqlite3
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
-from config import LOG_DIR
+from config import LOG_DIR, SNAPSHOT_DIR, RETENTION_DAYS
 
 
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -85,3 +85,61 @@ def log_event(
         person,
         snapshot
     )
+
+
+# Delete snapshots, database rows, and log lines older than RETENTION_DAYS
+def enforce_retention(days: int = RETENTION_DAYS):
+
+    cutoff = datetime.now() - timedelta(days=days)
+    cutoff_iso = cutoff.isoformat(timespec="seconds")
+    cutoff_ts = cutoff.timestamp()
+
+    # 1) Snapshot files
+    removed = 0
+    if os.path.isdir(SNAPSHOT_DIR):
+        for fname in os.listdir(SNAPSHOT_DIR):
+            path = os.path.join(SNAPSHOT_DIR, fname)
+            try:
+                if os.path.getmtime(path) < cutoff_ts:
+                    os.remove(path)
+                    removed += 1
+            except OSError:
+                pass
+
+    # 2) Database rows
+    connection = sqlite3.connect(DATABASE)
+    cursor = connection.cursor()
+    cursor.execute(
+        "DELETE FROM events WHERE timestamp < ?",
+        (cutoff_iso,)
+    )
+    connection.commit()
+    connection.close()
+
+    # 3) Log file lines (rewrite keeping only recent lines)
+    log_path = os.path.join(LOG_DIR, "security.log")
+    if os.path.exists(log_path):
+        try:
+            with open(log_path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+            kept = [
+                line for line in lines
+                if _line_is_recent(line, cutoff)
+            ]
+            if len(kept) != len(lines):
+                with open(log_path, "w", encoding="utf-8") as f:
+                    f.writelines(kept)
+        except OSError:
+            pass
+
+    if removed:
+        logger.info("Retention: removed %d old snapshot(s)", removed)
+
+
+def _line_is_recent(line: str, cutoff: datetime) -> bool:
+    """True when a log line's leading timestamp is at/after the cutoff."""
+    try:
+        ts = datetime.fromisoformat(line.split(" | ", 1)[0])
+        return ts >= cutoff
+    except (ValueError, IndexError):
+        return True  # keep unparseable lines

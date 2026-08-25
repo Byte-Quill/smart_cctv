@@ -45,7 +45,12 @@ from cctv.motion import MotionDetector
 from cctv.tracking import match_tracks
 from cctv.siren import Siren
 from cctv.yolo import ObjectDetector
-from cctv.storage import initialize_database, log_event, logger
+from cctv.storage import (
+    initialize_database,
+    log_event,
+    logger,
+    enforce_retention,
+)
 
 
 # Create needed folders if missing
@@ -71,6 +76,7 @@ def main():
 
     # Set up database, siren, detector and load known faces at startup
     initialize_database()
+    enforce_retention()
 
     siren = Siren()
     detector = ObjectDetector(enabled=ANIMAL_DETECTION_ENABLED)

@@ -66,6 +66,9 @@ FAMILY_DIR = "family"
 SNAPSHOT_DIR = "snapshots"
 LOG_DIR = "logs"
 
+# Retention: delete snapshots/log entries older than this many days
+RETENTION_DAYS = 30
+
 # Alarm sound file
 SIREN_FILE = "sounds/siren.wav"
 
