@@ -931,6 +931,10 @@ ANIMAL_CLASSES = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 
 HUMAN_CLASS_ID = 1
 
 # Modify frame processing loop
+animal_detected = False
+human_detected = False
+unknown_faces = False
+
 results = model(frame, stream=True)
 
 # Check detections
@@ -943,6 +947,11 @@ for result in results:
         elif class_id == HUMAN_CLASS_ID:  # Define HUMAN_CLASS_ID in config.py
             human_detected = True
             break
+
+if not animal_detected and not human_detected:
+    unknown_faces = True
+else:
+    unknown_faces = False
 
 # Update siren logic
 if unknown_faces and not animal_detected and human_detected:
