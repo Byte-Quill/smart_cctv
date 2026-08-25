@@ -3,6 +3,7 @@
 import logging
 import os
 import sqlite3
+import threading
 
 from datetime import datetime, timedelta
 
@@ -25,26 +26,39 @@ logger = logging.getLogger("SmartCCTV")
 # SQLite database that stores all events
 DATABASE = os.path.join(LOG_DIR, "events.db")
 
+# A single, long-lived connection reused across events. SQLite connections
+# are not safe to share across threads, so every access is serialized under
+# a lock. This avoids the repeated open/commit/close churn of the old code.
+_connection = None
+_db_lock = threading.Lock()
+
+
+def _get_connection() -> sqlite3.Connection:
+    """Return the shared connection, creating it on first use."""
+    global _connection
+    if _connection is None:
+        _connection = sqlite3.connect(DATABASE)
+    return _connection
+
 
 # Create the events table if it does not exist yet
 def initialize_database():
 
-    connection = sqlite3.connect(DATABASE)
+    with _db_lock:
+        connection = _get_connection()
+        cursor = connection.cursor()
 
-    cursor = connection.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                person TEXT,
+                snapshot TEXT
+            )
+        """)
 
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS events (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp TEXT NOT NULL,
-            event_type TEXT NOT NULL,
-            person TEXT,
-            snapshot TEXT
-        )
-    """)
-
-    connection.commit()
-    connection.close()
+        connection.commit()
 
 
 # Save one event to the database and the log file
@@ -58,26 +72,25 @@ def log_event(
         timespec="seconds"
     )
 
-    connection = sqlite3.connect(DATABASE)
+    with _db_lock:
+        connection = _get_connection()
+        cursor = connection.cursor()
 
-    cursor = connection.cursor()
-
-    cursor.execute(
-        """
-        INSERT INTO events
-        (timestamp, event_type, person, snapshot)
-        VALUES (?, ?, ?, ?)
-        """,
-        (
-            timestamp,
-            event_type,
-            person,
-            snapshot
+        cursor.execute(
+            """
+            INSERT INTO events
+            (timestamp, event_type, person, snapshot)
+            VALUES (?, ?, ?, ?)
+            """,
+            (
+                timestamp,
+                event_type,
+                person,
+                snapshot
+            )
         )
-    )
 
-    connection.commit()
-    connection.close()
+        connection.commit()
 
     logger.info(
         "%s | %s | %s",
@@ -107,14 +120,14 @@ def enforce_retention(days: int = RETENTION_DAYS):
                 pass
 
     # 2) Database rows
-    connection = sqlite3.connect(DATABASE)
-    cursor = connection.cursor()
-    cursor.execute(
-        "DELETE FROM events WHERE timestamp < ?",
-        (cutoff_iso,)
-    )
-    connection.commit()
-    connection.close()
+    with _db_lock:
+        connection = _get_connection()
+        cursor = connection.cursor()
+        cursor.execute(
+            "DELETE FROM events WHERE timestamp < ?",
+            (cutoff_iso,)
+        )
+        connection.commit()
 
     # 3) Log file lines (rewrite keeping only recent lines)
     log_path = os.path.join(LOG_DIR, "security.log")
