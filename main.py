@@ -13,8 +13,6 @@ from datetime import datetime
 
 from config import (
     CAMERA_INDEX,
-    CAMERA_WIDTH,
-    CAMERA_HEIGHT,
     FACE_TOLERANCE,
     UNKNOWN_CONFIRMATIONS,
     UNKNOWN_DELAY_SECONDS,
@@ -83,9 +81,8 @@ def is_allowed_time():
 
 
 def main():
-    # ------------------------------------------------------------------
-    # 1. SETUP — database, retention, siren, detectors, family database
-    # ------------------------------------------------------------------
+
+    # Set up database, siren, detector and load known faces at startup
     initialize_database()
     enforce_retention()
 
@@ -129,14 +126,12 @@ def main():
 
     # Open the camera and set its resolution
     camera = cv2.VideoCapture(CAMERA_INDEX)
-    camera.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_WIDTH)
-    camera.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_HEIGHT)
+
+    camera.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+    camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+
     if not camera.isOpened():
         raise RuntimeError("Could not open camera.")
-
-    # ------------------------------------------------------------------
-    # 2. STATE — counters that persist across the loop iterations
-    # ------------------------------------------------------------------
 
     # Counters to track unknown detection
     unknown_count = 0
@@ -155,15 +150,14 @@ def main():
 
     running = True
 
-    # ------------------------------------------------------------------
-    # 3. MAIN LOOP
-    # ------------------------------------------------------------------
+    # Main camera loop
     while running:
 
         ret, frame = camera.read()
 
-        # --- 3a. Frame unavailable: reconnect with exponential backoff. ---
         if not ret:
+
+            # Reconnect with exponential backoff instead of a fixed sleep
             wait = min(30, 2 ** reconnect_attempts)
             print(
                 f"WARNING: Camera frame unavailable. "
@@ -174,8 +168,8 @@ def main():
             time.sleep(wait)
 
             camera = cv2.VideoCapture(CAMERA_INDEX)
-            camera.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_WIDTH)
-            camera.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_HEIGHT)
+            camera.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+            camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 
             reconnect_attempts += 1
 
@@ -185,12 +179,13 @@ def main():
 
             continue
 
-        # --- 3b. Motion gate: skip the expensive pipeline if nothing moves.
-        # Tracks are kept alive so a face that stops moving is not lost.
+        # ── Motion gate ──
+        # Skip the expensive pipeline when nothing moves. Tracks are kept
+        # alive so a face that stops moving is not lost.
         if MOTION_ENABLED and not motion.has_motion(frame):
             continue
 
-        # --- 3c. Preprocess, then detect and recognize. ----------------
+        # ── Image enhancement ──
         enhanced = enhance_frame(frame)
 
         # ── Downscale for recognition speed ──
@@ -270,8 +265,10 @@ def main():
 
         frame_counter += 1
 
-        # --- 3d. Scene analysis: YOLO explains why someone is here. ----
-        # Animals suppress the siren; a confirmed human shortens the delay.
+        # Handle unknown faces: start timer, save snapshots, raise alarm
+
+        # Object detection explains the scene while an unknown face lingers:
+        # animals suppress the siren, a confirmed human shortens the delay.
         # Throttled to every YOLO_SKIP_FRAMES; last result reused in between.
         if unknown_faces and ANIMAL_DETECTION_ENABLED:
             if frame_counter % YOLO_SKIP_FRAMES == 0:
@@ -288,8 +285,8 @@ def main():
         else:
             active_delay = UNKNOWN_DELAY_SECONDS
 
-        # --- 3e. Unknown-face handling: debounce, snapshot, siren. ------
         if unknown_faces:
+
             unknown_count += 1
 
             # Only count an unknown after several consecutive frames
@@ -376,7 +373,8 @@ def main():
             unknown_count = 0
             unknown_start = None
 
-        # --- 3f. Recognized family: overlay names + rate-limited logging. --
+        # Show the names of recognized family members
+
         if recognized_people:
 
             unique_people = sorted(
@@ -392,9 +390,16 @@ def main():
                     log_event("FAMILY_SIGHTING", person=person)
                     last_sighting[person] = now
 
-        # --- 3g. HUD: mode, status, show frame, keyboard. ---------------
+        # Show whether we're inside the allowed hours
+
         draw_mode(frame, is_allowed_time())
+
+        # Show overall system status (alarm on or ok)
+
         draw_status(frame, siren.is_active)
+
+        # Show the current camera frame
+
         cv2.imshow(
             "Smart CCTV Security",
             frame
@@ -412,10 +417,10 @@ def main():
 
             siren.stop()
 
-    # ------------------------------------------------------------------
-    # 4. SHUTDOWN — tidy up cleanly when the loop ends
-    # ------------------------------------------------------------------
+    # Shut down cleanly when the loop ends
+
     siren.stop()
+
     camera.release()
 
     cv2.destroyAllWindows()
