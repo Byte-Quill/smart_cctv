@@ -62,3 +62,7 @@ LOG_DIR = "logs"
 
 # Alarm sound file
 SIREN_FILE = "sounds/siren.wav"
+
+# New parameters for animal detection and human delay
+ANIMAL_DETECTION_ENABLED = True
+UNKNOWN_HUMAN_DELAY_SECONDS = 1

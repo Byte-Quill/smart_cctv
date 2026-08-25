@@ -33,7 +33,9 @@ from config import (
     FAMILY_DIR,
     SNAPSHOT_DIR,
     LOG_DIR,
-    SIREN_FILE
+    SIREN_FILE,
+    ANIMAL_DETECTION_ENABLED,
+    UNKNOWN_HUMAN_DELAY_SECONDS
 )
 
 
@@ -795,7 +797,7 @@ while running:
             if (
                 elapsed
                 >= active_delay
-            ) && is_allowed_time():
+            ) and is_allowed_time():
 
                 start_siren()
 
@@ -953,11 +955,11 @@ if not animal_detected and not human_detected:
 else:
     unknown_faces = False
 
-# Update siren logic
-if unknown_faces and not animal_detected and human_detected:
-    # Apply 1-second delay for humans
-    start_siren(delay_seconds=1)
-
-# Remove existing siren trigger if animal detected
-if animal_detected:
-    stop_siren()
+# Update siren logic to use config parameters
+if ANIMAL_DETECTION_ENABLED and animal_detected:
+    # Suppress siren for animals
+elif human_detected:
+    time.sleep(UNKNOWN_HUMAN_DELAY_SECONDS)
+    start_siren()
+else:
+    start_siren()
