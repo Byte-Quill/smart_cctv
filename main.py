@@ -451,13 +451,13 @@ def main():
 
         status = (
             "ALARM ACTIVE"
-            if siren.active
+            if siren.is_active
             else "SYSTEM OK"
         )
 
         status_color = (
             (0, 0, 255)
-            if siren.active
+            if siren.is_active
             else (0, 255, 0)
         )
 
