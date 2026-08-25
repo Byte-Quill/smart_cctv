@@ -28,6 +28,7 @@ from config import (
     MOTION_THRESHOLD,
     MOTION_MIN_AREA,
     MOTION_SCALE,
+    MOTION_BG_ALPHA,
     FAMILY_DIR,
     SNAPSHOT_DIR,
     LOG_DIR,
@@ -84,6 +85,7 @@ def main():
         threshold=MOTION_THRESHOLD,
         min_area=MOTION_MIN_AREA,
         scale=MOTION_SCALE,
+        bg_alpha=MOTION_BG_ALPHA,
     )
 
     known_encodings, known_names = load_family_database()

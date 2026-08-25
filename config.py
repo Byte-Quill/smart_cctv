@@ -51,6 +51,7 @@ MOTION_ENABLED = True
 MOTION_THRESHOLD = 25.0   # pixel-diff threshold (0-255)
 MOTION_MIN_AREA = 0.01    # min fraction of changed pixels to count as motion
 MOTION_SCALE = 0.25       # resolution used for the cheap diff check
+MOTION_BG_ALPHA = 0.05    # how fast the background model adapts (0-1)
 
 # YOLO object detection: run every N frames while an unknown face lingers
 YOLO_SKIP_FRAMES = 3

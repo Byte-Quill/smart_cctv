@@ -4,11 +4,25 @@ import cv2
 import numpy as np
 
 
+def _preprocess(frame: np.ndarray, scale: float) -> np.ndarray:
+    """Downscale, grayscale, and blur a frame once for diffing."""
+    small = cv2.resize(
+        frame, (0, 0), fx=scale, fy=scale
+    )
+    gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
+    return cv2.GaussianBlur(gray, (21, 21), 0)
+
+
 class MotionDetector:
-    """Detects scene change between consecutive frames.
+    """Detects scene change against a slowly-updating background model.
 
     Only frames with enough motion pass the gate, so the expensive
     face/YOLO pipeline runs only when something actually moves.
+
+    Compared with a naive consecutive-frame diff, the background model
+    is updated only by a fraction each frame. A person creeping in
+    gradually still changes enough pixels to trip the gate, instead of
+    silently merging into an ever-advancing baseline.
     """
 
     def __init__(
@@ -16,26 +30,31 @@ class MotionDetector:
         threshold: float = 25.0,
         min_area: float = 0.01,
         scale: float = 0.25,
+        bg_alpha: float = 0.05,
     ):
         self.threshold = threshold
         self.min_area = min_area
         self.scale = scale
-        self._prev_gray = None
+        # How much the running background adapts toward each new frame.
+        self.bg_alpha = bg_alpha
+        self._bg_gray = None
 
     def motion(self, frame: np.ndarray) -> float:
-        """Return the fraction of changed pixels (0.0-1.0) vs previous frame."""
-        small = cv2.resize(
-            frame, (0, 0), fx=self.scale, fy=self.scale
-        )
-        gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
-        gray = cv2.GaussianBlur(gray, (21, 21), 0)
+        """Return the fraction of changed pixels (0.0-1.0) vs background."""
+        gray = _preprocess(frame, self.scale)
 
-        if self._prev_gray is None:
-            self._prev_gray = gray
+        if self._bg_gray is None:
+            self._bg_gray = gray
             return 0.0
 
-        diff = cv2.absdiff(self._prev_gray, gray)
-        self._prev_gray = gray
+        diff = cv2.absdiff(self._bg_gray, gray)
+
+        # Blend the background toward the current frame so slow, gradual
+        # changes accumulate into detectable signal over time.
+        a = self.bg_alpha
+        self._bg_gray = cv2.convertScaleAbs(
+            (1.0 - a) * self._bg_gray + a * gray
+        )
 
         _, thresh = cv2.threshold(
             diff, self.threshold, 255, cv2.THRESH_BINARY
@@ -43,23 +62,24 @@ class MotionDetector:
         return float(np.count_nonzero(thresh)) / thresh.size
 
     def has_motion(self, frame: np.ndarray) -> bool:
-        """True when the frame differs enough from the previous one.
+        """True when the frame differs enough from the background.
 
-        Advances the baseline exactly once per call (unlike calling
+        Advances the background exactly once per call (unlike calling
         ``motion()`` twice, which would compare against the same frame).
         """
-        if self._prev_gray is None:
-            self.motion(frame)
+        gray = _preprocess(frame, self.scale)
+
+        # First frame: initialize the background and report no motion.
+        if self._bg_gray is None:
+            self._bg_gray = gray
             return False
 
-        small = cv2.resize(
-            frame, (0, 0), fx=self.scale, fy=self.scale
-        )
-        gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
-        gray = cv2.GaussianBlur(gray, (21, 21), 0)
+        diff = cv2.absdiff(self._bg_gray, gray)
 
-        diff = cv2.absdiff(self._prev_gray, gray)
-        self._prev_gray = gray
+        a = self.bg_alpha
+        self._bg_gray = cv2.convertScaleAbs(
+            (1.0 - a) * self._bg_gray + a * gray
+        )
 
         _, thresh = cv2.threshold(
             diff, self.threshold, 255, cv2.THRESH_BINARY
@@ -67,4 +87,4 @@ class MotionDetector:
         return float(np.count_nonzero(thresh)) / thresh.size >= self.min_area
 
     def reset(self):
-        self._prev_gray = None
+        self._bg_gray = None
