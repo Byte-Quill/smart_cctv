@@ -46,6 +46,12 @@ ENSEMBLE_FRAMES = 5
 # Face tracking: run full detection every N frames (1 = every frame)
 TRACKING_SKIP_FRAMES = 2
 
+# Motion gate: skip the heavy pipeline when nothing moves
+MOTION_ENABLED = True
+MOTION_THRESHOLD = 25.0   # pixel-diff threshold (0-255)
+MOTION_MIN_AREA = 0.01    # min fraction of changed pixels to count as motion
+MOTION_SCALE = 0.25       # resolution used for the cheap diff check
+
 # YOLO object detection: run every N frames while an unknown face lingers
 YOLO_SKIP_FRAMES = 3
 

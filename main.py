@@ -24,6 +24,10 @@ from config import (
     DETECTION_SCALE,
     TRACKING_SKIP_FRAMES,
     YOLO_SKIP_FRAMES,
+    MOTION_ENABLED,
+    MOTION_THRESHOLD,
+    MOTION_MIN_AREA,
+    MOTION_SCALE,
     FAMILY_DIR,
     SNAPSHOT_DIR,
     LOG_DIR,
@@ -37,6 +41,7 @@ from cctv.faces import (
     recognize_face,
     detect_faces_enhanced,
 )
+from cctv.motion import MotionDetector
 from cctv.tracking import match_tracks
 from cctv.siren import Siren
 from cctv.yolo import ObjectDetector
@@ -69,6 +74,11 @@ def main():
 
     siren = Siren()
     detector = ObjectDetector(enabled=ANIMAL_DETECTION_ENABLED)
+    motion = MotionDetector(
+        threshold=MOTION_THRESHOLD,
+        min_area=MOTION_MIN_AREA,
+        scale=MOTION_SCALE,
+    )
 
     known_encodings, known_names = load_family_database()
 
@@ -134,6 +144,12 @@ def main():
 
             time.sleep(0.5)
 
+            continue
+
+        # ── Motion gate ──
+        # Skip the expensive pipeline when nothing moves. Tracks are kept
+        # alive so a face that stops moving is not lost.
+        if MOTION_ENABLED and not motion.has_motion(frame):
             continue
 
         # ── Image enhancement ──
