@@ -48,8 +48,3 @@ class ObjectDetector:
                     animal_seen = True
 
         return animal_seen, human_seen
-
-    def suppresses_alarm(self, frame) -> bool:
-        """True when an animal (and no human) explains the scene."""
-        animal_seen, human_seen = self.detect(frame)
-        return animal_seen and not human_seen

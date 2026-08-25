@@ -4,11 +4,11 @@ CAMERA_INDEX = 0
 # Max distance for a face to count as a match
 FACE_TOLERANCE = 0.45
 
-# Frames needed before accepting a family member
-REQUIRED_CONFIRMATIONS = 5
-
 # Frames needed before treating someone as unknown
 UNKNOWN_CONFIRMATIONS = 5
+
+# Minimum seconds between two FAMILY_SIGHTING log entries per person
+SIGHTING_LOG_INTERVAL = 30
 
 # How long an unknown person must stay before alarm
 UNKNOWN_DELAY_SECONDS = 10
@@ -22,9 +22,6 @@ ALLOWED_END_HOUR = 22
 
 # Save an unknown snapshot every X seconds
 SNAPSHOT_INTERVAL = 5
-
-# Scale factor to shrink frames for faster recognition
-FRAME_SCALE = 0.25
 
 # Face detection resolution scale (0.5 = detect on half-size frame)
 DETECTION_SCALE = 0.5
@@ -48,6 +45,9 @@ ENSEMBLE_FRAMES = 5
 
 # Face tracking: run full detection every N frames (1 = every frame)
 TRACKING_SKIP_FRAMES = 2
+
+# YOLO object detection: run every N frames while an unknown face lingers
+YOLO_SKIP_FRAMES = 3
 
 # Exponential moving average alpha for bounding box smoothing (0.0-1.0, higher = faster tracking)
 TRACKING_SMOOTH_ALPHA = 0.6

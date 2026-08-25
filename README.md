@@ -304,9 +304,8 @@ All tunable parameters in `config.py`:
 
 | Setting                  | Default | Description                                           |
 | ------------------------ | ------- | ----------------------------------------------------- |
-| `FACE_TOLERANCE`         | `0.45`  | Max Euclidean distance for a match (lower = stricter) |
-| `REQUIRED_CONFIRMATIONS` | `5`     | Consecutive frames to accept a family member          |
-| `UNKNOWN_CONFIRMATIONS`  | `5`     | Consecutive frames to confirm an unknown person       |
+| `FACE_TOLERANCE`        | `0.45` | Max Euclidean distance for a match (lower = stricter) |
+| `UNKNOWN_CONFIRMATIONS` | `5`    | Consecutive frames to confirm an unknown person       |
 
 ### Alarm Timing
 
@@ -324,18 +323,19 @@ All tunable parameters in `config.py`:
 
 ### Snapshots
 
-| Setting             | Default | Description                              |
-| ------------------- | ------- | ---------------------------------------- |
-| `SNAPSHOT_INTERVAL` | `5`     | Seconds between unknown-person snapshots |
+| Setting                 | Default | Description                                        |
+| ----------------------- | ------- | -------------------------------------------------- |
+| `SNAPSHOT_INTERVAL`     | `5`     | Seconds between unknown-person snapshots           |
+| `SIGHTING_LOG_INTERVAL` | `30`    | Min seconds between FAMILY_SIGHTING logs per person |
 
 ### Detection
 
-| Setting               | Default | Description                                 |
-| --------------------- | ------- | ------------------------------------------- |
-| `FRAME_SCALE`         | `0.25`  | Scale factor for pre-processing preview     |
-| `DETECTION_SCALE`     | `0.5`   | Face detection resolution (0.5 = half-size) |
-| `MIN_FACE_SIZE`       | `40`    | Minimum face height (px) at detection scale |
-| `ENABLE_CNN_FALLBACK` | `True`  | Use CNN when HOG finds nothing              |
+| Setting               | Default | Description                                        |
+| --------------------- | ------- | -------------------------------------------------- |
+| `DETECTION_SCALE`     | `0.5`   | Face detection resolution (0.5 = half-size)        |
+| `MIN_FACE_SIZE`       | `40`    | Minimum face height (px) at detection scale        |
+| `ENABLE_CNN_FALLBACK` | `True`  | Use CNN when HOG finds nothing                     |
+| `YOLO_SKIP_FRAMES`    | `3`     | Run YOLO every N frames while an unknown lingers   |
 
 ### Registration Quality (register.py)
 

@@ -20,8 +20,10 @@ from config import (
     ALLOWED_START_HOUR,
     ALLOWED_END_HOUR,
     SNAPSHOT_INTERVAL,
+    SIGHTING_LOG_INTERVAL,
     DETECTION_SCALE,
     TRACKING_SKIP_FRAMES,
+    YOLO_SKIP_FRAMES,
     FAMILY_DIR,
     SNAPSHOT_DIR,
     LOG_DIR,
@@ -111,9 +113,13 @@ def main():
     unknown_start = None
 
     last_snapshot = 0
+    last_sighting = {}  # person -> timestamp of last FAMILY_SIGHTING log
 
     tracked_faces = {}
     frame_counter = 0
+
+    # Last YOLO result, reused between throttled detection runs
+    animal_seen, human_seen = False, False
 
     running = True
 
@@ -159,7 +165,7 @@ def main():
             locations, encodings = [], []
 
         # ── Recognize each detected face ──
-        raw_faces = []  # (location, name, confidence, encoding)
+        raw_faces = []  # (location, name, confidence)
 
         for encoding, location in zip(encodings, locations):
             name, distance, confidence = recognize_face(
@@ -167,7 +173,7 @@ def main():
                 known_encodings,
                 known_names
             )
-            raw_faces.append((location, name, confidence, encoding))
+            raw_faces.append((location, name, confidence))
 
         # Update tracks with smoothing and frame-skip
         tracked_faces = match_tracks(
@@ -229,9 +235,12 @@ def main():
 
         # Object detection explains the scene while an unknown face lingers:
         # animals suppress the siren, a confirmed human shortens the delay.
-        animal_seen, human_seen = False, False
+        # Throttled to every YOLO_SKIP_FRAMES; last result reused in between.
         if unknown_faces and ANIMAL_DETECTION_ENABLED:
-            animal_seen, human_seen = detector.detect(frame)
+            if frame_counter % YOLO_SKIP_FRAMES == 0:
+                animal_seen, human_seen = detector.detect(frame)
+        else:
+            animal_seen, human_seen = False, False
 
         # Shorter delay outside allowed hours (night mode),
         # fastest delay when YOLO confirms a human
@@ -363,9 +372,12 @@ def main():
                 2
             )
 
-            # Log family member sightings
+            # Log family member sightings (rate-limited per person)
+            now = time.time()
             for person in unique_people:
-                log_event("FAMILY_SIGHTING", person=person)
+                if now - last_sighting.get(person, 0) >= SIGHTING_LOG_INTERVAL:
+                    log_event("FAMILY_SIGHTING", person=person)
+                    last_sighting[person] = now
 
         # Show whether we're inside the allowed hours
 

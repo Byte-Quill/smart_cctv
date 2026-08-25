@@ -19,13 +19,10 @@ class FaceHistory:
         self.window = window
         self.classes: deque = deque(maxlen=window)
         self.confidences: deque = deque(maxlen=window)
-        self.encoding_history: deque = deque(maxlen=window)
 
-    def add(self, name: str, confidence: float, encoding):
+    def add(self, name: str, confidence: float):
         self.classes.append(name)
         self.confidences.append(confidence)
-        if encoding is not None:
-            self.encoding_history.append(encoding)
 
     @property
     def majority_name(self) -> str:
@@ -46,16 +43,16 @@ class FaceHistory:
 class FaceTrack:
     """Track state for one face: smoothed location, history, patience."""
 
-    def __init__(self, location, name: str, confidence: float, encoding):
+    def __init__(self, location, name: str, confidence: float):
         self.history = FaceHistory()
-        self.history.add(name, confidence, encoding)
+        self.history.add(name, confidence)
         # Smoothed location (detection-scale coords)
         self.smoothed = location
         self.patience = TRACKING_PATIENCE  # frames remaining before expiry
         self.last_seen = location
 
-    def update(self, location, name: str, confidence: float, encoding):
-        self.history.add(name, confidence, encoding)
+    def update(self, location, name: str, confidence: float):
+        self.history.add(name, confidence)
         # EMA smoothing on each coordinate
         a = TRACKING_SMOOTH_ALPHA
         self.smoothed = tuple(
@@ -113,7 +110,7 @@ def match_tracks(
     matched = set()
     next_id = max(prev_tracks.keys(), default=-1) + 1
 
-    for _loc, name, conf, enc in current_faces:
+    for _loc, name, conf in current_faces:
         best_id = -1
         best_dist = 60  # centroid distance threshold (detection-scale pixels)
         cx, cy = _centroid(_loc)
@@ -128,10 +125,10 @@ def match_tracks(
         if best_id >= 0:
             matched.add(best_id)
             track = prev_tracks[best_id]
-            track.update(_loc, name, conf, enc)
+            track.update(_loc, name, conf)
             new_tracks[best_id] = track
         else:
-            new_tracks[next_id] = FaceTrack(_loc, name, conf, enc)
+            new_tracks[next_id] = FaceTrack(_loc, name, conf)
             next_id += 1
 
     # Keep unmatched tracks alive (patience decay)
