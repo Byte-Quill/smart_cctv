@@ -215,6 +215,13 @@ When the current time is outside the `ALLOWED_START_HOUR`–`ALLOWED_END_HOUR` w
 - The display switches to **NIGHT MODE** (amber text)
 - The unknown alert delay drops from `UNKNOWN_DELAY_SECONDS` (10s) to `NIGHT_UNKNOWN_DELAY_SECONDS` (2s)
 
+> **Note on the siren:** by design, the audible siren only sounds during
+> **allowed hours**. Outside that window the system still confirms unknowns,
+> saves snapshots, and shows the countdown, but it will **not** trigger the
+> loud siren (to avoid disturbing neighbors overnight). If you want around-
+> the-clock siren coverage, extend `ALLOWED_END_HOUR` to `24` (or set
+> `ALLOWED_START_HOUR`/`ALLOWED_END_HOUR` to span the full day).
+
 This provides rapid response during nighttime hours when intrusions are most likely.
 
 ---
