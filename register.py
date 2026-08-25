@@ -9,8 +9,11 @@ import numpy as np
 
 from config import (
     CAMERA_INDEX,
+    CAMERA_WIDTH,
+    CAMERA_HEIGHT,
     FAMILY_DIR,
     AUTO_CAPTURE_STABLE_FRAMES,
+    TARGET_PHOTOS,
 )
 
 from cctv.quality import (
@@ -22,9 +25,6 @@ from cctv.quality import (
     load_existing_encodings,
     is_duplicate_pose,
 )
-
-
-TARGET_PHOTOS = 10  # photos we want per person
 
 
 def main() -> None:
@@ -57,8 +57,8 @@ def main() -> None:
         print("ERROR: Camera could not be opened.")
         return
 
-    camera.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-    camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+    camera.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_WIDTH)
+    camera.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_HEIGHT)
 
     # ── state ──────────────────────────────────────────────────────────
     captured = 0

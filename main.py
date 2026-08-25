@@ -13,6 +13,8 @@ from datetime import datetime
 
 from config import (
     CAMERA_INDEX,
+    CAMERA_WIDTH,
+    CAMERA_HEIGHT,
     FACE_TOLERANCE,
     UNKNOWN_CONFIRMATIONS,
     UNKNOWN_DELAY_SECONDS,
@@ -127,8 +129,8 @@ def main():
     # Open the camera and set its resolution
     camera = cv2.VideoCapture(CAMERA_INDEX)
 
-    camera.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-    camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+    camera.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_WIDTH)
+    camera.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_HEIGHT)
 
     if not camera.isOpened():
         raise RuntimeError("Could not open camera.")
@@ -168,8 +170,8 @@ def main():
             time.sleep(wait)
 
             camera = cv2.VideoCapture(CAMERA_INDEX)
-            camera.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-            camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+            camera.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_WIDTH)
+            camera.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_HEIGHT)
 
             reconnect_attempts += 1
 
