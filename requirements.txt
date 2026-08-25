@@ -1,0 +1,6 @@
+opencv-python
+face_recognition
+pygame
+numpy
+ultralytics
+setuptools<81

@@ -128,7 +128,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 
 # 2. Install dependencies
-pip install opencv-python face_recognition pygame numpy "setuptools<81"
+pip install -r requirements.txt
 
 # 3. Register a family member
 python register.py
@@ -151,7 +151,7 @@ source .venv/bin/activate
 ### 2. Install packages
 
 ```bash
-pip install opencv-python face_recognition pygame numpy "setuptools<81"
+pip install -r requirements.txt
 ```
 
 > **Python 3.12+ note:** `face_recognition_models` depends on the deprecated `pkg_resources` module, removed from recent `setuptools`. Pinning `setuptools<81` restores it. A harmless deprecation warning appears on import.
@@ -413,8 +413,11 @@ sqlite3 logs/events.db "SELECT * FROM events ORDER BY id DESC LIMIT 10;"
 ├── config.py           # All configurable settings & thresholds
 ├── main.py             # Thin orchestrator: wires the cctv/ modules into the loop
 ├── register.py         # Family member registration tool
+├── requirements.txt    # Python dependencies
+├── LICENSE             # MIT license
 ├── README.md           # This file
 ├── .gitignore          # Git ignore rules
+├── yolov8n.pt          # Bundled YOLOv8n weights (animal/human detection)
 │
 ├── cctv/               # Modular pipeline components
 │   ├── __init__.py
