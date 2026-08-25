@@ -30,7 +30,7 @@ class Siren:
         if self.active:
             return
 
-        print("\n🚨 SIREN ACTIVATED 🚨")
+        print("\nSIREN ACTIVATED")
 
         logger.warning("SIREN ACTIVATED")
 

@@ -163,7 +163,7 @@ def main() -> None:
                 existing_encodings.append(face_encoding)
                 last_encoding = face_encoding
                 stable_frames = 0
-                print(f"  ✓  captured {captured}/{TARGET_PHOTOS}  ({fname})")
+                print(f"  [OK]  captured {captured}/{TARGET_PHOTOS}  ({fname})")
         else:
             stable_frames = 0
 
@@ -187,7 +187,7 @@ def main() -> None:
         lines = [
             f"Photos: {captured}/{TARGET_PHOTOS}",
             f"Rejected: blurry={skipped_blurry}  dup={skipped_dup}  light={skipped_badlight}",
-            f"{'● AUTO-CAPTURING' if quality_ok else '○ waiting'}  |  Q = quit",
+            f"{'CAPTURING' if quality_ok else 'waiting'}  |  Q = quit",
         ]
         for i, line in enumerate(lines):
             cv2.putText(display, line, (20, 40 + i * 35),
@@ -203,7 +203,7 @@ def main() -> None:
             break
 
         if captured >= TARGET_PHOTOS:
-            print(f"\n  ✓  Successfully registered {safe_name} ({captured} photos).")
+            print(f"\n  [OK]  Successfully registered {safe_name} ({captured} photos).")
             break
 
     camera.release()

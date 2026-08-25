@@ -264,7 +264,7 @@ def main():
                     unknown_start = time.time()
 
                     print(
-                        "\n⚠ UNKNOWN PERSON CONFIRMED"
+                        "\nUNKNOWN PERSON CONFIRMED"
                     )
 
                     logger.warning(
@@ -386,7 +386,7 @@ def main():
         time_text = (
             "ALLOWED TIME"
             if allowed
-            else "🌙 NIGHT MODE"
+            else "NIGHT MODE"
         )
 
         time_color = (
