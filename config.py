@@ -85,6 +85,10 @@ RETENTION_DAYS = 30
 # Which camera to use (0 = built-in/webcam, 1+ for extra devices).
 CAMERA_INDEX = 0
 
+# Mirror the video horizontally so the view behaves like a mirror:
+# raising your right hand appears on the RIGHT side of the screen.
+MIRROR_DISPLAY = True
+
 # Capture resolution requested from the camera.
 CAMERA_WIDTH = 1280
 CAMERA_HEIGHT = 720

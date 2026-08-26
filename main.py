@@ -71,6 +71,7 @@ from config import (
     SIREN_DAY_DURATION,
     SIREN_NIGHT_DURATION,
     NIGHT_START_HOUR,
+    MIRROR_DISPLAY,
 )
 
 from cctv.enhance import enhance_frame
@@ -263,6 +264,13 @@ def main():
 
                 continue
 
+            # Mirror the view so it behaves like a mirror — raising your
+            # right hand shows on the right side of the screen. Every
+            # downstream step (detection, zones, overlays) works on the
+            # flipped frame, so what you see is exactly what is processed.
+            if MIRROR_DISPLAY:
+                frame = cv2.flip(frame, 1)
+
             # ── FPS measurement (smoothed) ──
             now = time.time()
             dt = now - last_frame_time
@@ -354,9 +362,11 @@ def main():
 
                 if final_name == "UNKNOWN":
                     unknown_faces.append(track.last_seen)
+                    # No label on the box: the red 'UNKNOWN PERSON
+                    # DETECTED' banner is the single unknown indicator.
                     displayed_faces.append(
                         ((fleft, ftop, fright, fbottom),
-                         "UNKNOWN", (0, 0, 255), conf)
+                         "", (0, 0, 255), conf)
                     )
                 else:
                     recognized_people.append(final_name)

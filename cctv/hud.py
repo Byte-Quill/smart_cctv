@@ -22,8 +22,11 @@ def draw_face_boxes(frame, faces) -> None:
     """
     for ((lx, ty, rx, by), label, color, conf) in faces:
         cv2.rectangle(frame, (lx, ty), (rx, by), color, 2)
-        cv2.putText(frame, label, (lx, max(30, ty - 10)),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
+        # Unknown faces carry an empty label — the red 'UNKNOWN PERSON
+        # DETECTED' banner is their only on-screen warning.
+        if label:
+            cv2.putText(frame, label, (lx, max(30, ty - 10)),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
 
         # Confidence bar (green/amber/red)
         bar_len = int((rx - lx) * conf)
