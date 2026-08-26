@@ -35,7 +35,9 @@ Design notes
 - The loop is wrapped in try/finally so Ctrl+C or an error still releases
   the camera, silences the siren, and closes the window.
 
-Keyboard: ``q`` quits, ``s`` silences the siren.
+Keyboard: ``q`` quits, ``s`` silences the siren, ``a`` (or clicking the
+``+ ADD FAMILY`` button) opens the in-app family enrollment flow
+(cctv/enroll.py).
 """
 
 import os
@@ -85,7 +87,9 @@ from cctv.hud import (
     draw_status,
     draw_fps,
     draw_unknown_alert,
+    draw_add_button,
 )
+from cctv.enroll import run_enrollment
 from cctv.motion import MotionDetector
 from cctv.tracking import match_tracks
 from cctv.siren import Siren
@@ -183,6 +187,45 @@ def main():
     reconnect_attempts = 0
 
     running = True
+
+    # ── Add-family button state ──
+    # The mouse callback records the cursor and any left-click; the main
+    # loop hit-tests the click against the button rect drawn each frame.
+    mouse_pos = [0, 0]
+    click_pos = None  # set by the callback, consumed by the loop
+    button_rect = None
+
+    def on_mouse(event, x, y, flags, param):
+        nonlocal click_pos
+        mouse_pos[0], mouse_pos[1] = x, y
+        if event == cv2.EVENT_LBUTTONDOWN:
+            click_pos = (x, y)
+
+    cv2.setMouseCallback("Smart CCTV Security", on_mouse)
+
+    def _open_enrollment():
+        """Pause security, run the in-app add-family flow, reload the DB."""
+        nonlocal known_encodings, known_names
+        nonlocal unknown_count, unknown_start
+
+        # Pause the alarm side so registration is calm and safe
+        siren.stop()
+        unknown_count = 0
+        unknown_start = None
+
+        enrolled = run_enrollment(camera)
+
+        if enrolled:
+            # Pick up the new photos immediately without a restart
+            known_encodings, known_names = load_family_database()
+            print(
+                f"Family database reloaded: "
+                f"{len(known_encodings)} samples."
+            )
+
+        # Avoid a motion spike / stale tracks when monitoring resumes
+        motion.reset()
+        tracked_faces.clear()
 
     # Main camera loop — wrapped so Ctrl+C or an unexpected error still
     # releases the camera, silences the siren, and closes the window.
@@ -488,6 +531,15 @@ def main():
             if SHOW_FPS:
                 draw_fps(frame, fps)
 
+            # Clickable '+ ADD FAMILY' button (bottom right). Hovering
+            # brightens it; the rect is hit-tested against mouse clicks.
+            mx, my = mouse_pos
+            hover = False
+            if button_rect is not None:
+                bx0, by0, bx1, by1 = button_rect
+                hover = bx0 <= mx <= bx1 and by0 <= my <= by1
+            button_rect = draw_add_button(frame, hover)
+
             # Show the current camera frame
 
             cv2.imshow(
@@ -495,7 +547,8 @@ def main():
                 frame
             )
 
-            # Keyboard controls: q quits, s stops the siren
+            # Keyboard controls: q quits, s stops the siren,
+            # a opens the add-family-member flow
 
             key = cv2.waitKey(1) & 0xFF
 
@@ -506,6 +559,19 @@ def main():
             elif key == ord("s"):
 
                 siren.stop()
+
+            elif key == ord("a"):
+
+                click_pos = None  # ignore any stale click
+                _open_enrollment()
+
+            # Mouse click on the '+ ADD FAMILY' button
+            elif click_pos is not None:
+                cx, cy = click_pos
+                click_pos = None
+                bx0, by0, bx1, by1 = button_rect
+                if bx0 <= cx <= bx1 and by0 <= cy <= by1:
+                    _open_enrollment()
 
     except KeyboardInterrupt:
         print("\nInterrupted by user.")

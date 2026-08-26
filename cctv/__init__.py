@@ -32,9 +32,13 @@ PIPELINE (per camera frame, in ``main.py``)
          hardware.py → device abstraction (pc / pi / esp32) so the system
                        can move to a Raspberry Pi 5 or ESP32-CAM later
 
-    Registration quality gates (used by ``register.py``):
+    Registration quality gates (used by ``register.py`` and the in-app
+    enrollment flow in ``enroll.py``):
 
          quality.py → blur / brightness / size / duplicate-pose checks
+         enroll.py  → in-app 'Add Family' flow: on-screen name entry +
+                      guided left→center→right zone capture, opened from
+                      the main window's button (or the 'a' key)
 
 MODULE → JOB
     enhance   — brightness/contrast/denoise frame preprocessing.
@@ -45,6 +49,7 @@ MODULE → JOB
     siren     — looping WAV alarm with thread-safe on/off + auto-stop timer.
     storage   — SQLite events table + text audit log + retention.
     quality   — blur/brightness/size/duplicate checks for registration.
+    enroll    — in-app add-family flow (name entry + guided zone capture).
     hud       — all cv2 overlay drawing used by the main loop.
     timeutil  — Nepal-time clock, day/night security mode, siren durations.
     hardware  — camera/device abstraction for future Pi/ESP32 ports.

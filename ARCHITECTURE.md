@@ -44,6 +44,11 @@ cctv/
 ├── siren.py      → looping alarm sound, thread-safe, auto-stops on a timer
 ├── storage.py    → SQLite events DB + text audit log + retention
 ├── quality.py    → blur/brightness/size/duplicate checks (registration)
+
+> **In-app enrollment:** `cctv/enroll.py` reuses the same
+> quality gates to add a family member from inside the live view —
+> click the `+ ADD FAMILY` button (or press `a`), type a name, then
+> follow the glowing LEFT → CENTER → RIGHT capture zones.
 ├── hud.py        → every on-screen overlay the main loop draws
 ├── timeutil.py   → Nepal Time clock + day/night security mode logic
 └── hardware.py   → device abstraction (pc / pi / esp32) for future ports

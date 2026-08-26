@@ -141,3 +141,43 @@ def draw_unknown_alert(frame) -> None:
         _RED,
         2
     )
+
+
+def draw_add_button(frame, hover: bool = False):
+    """Draw the clickable '+ ADD FAMILY' button, bottom right.
+
+    Returns the button rectangle as ``(x0, y0, x1, y1)`` so the caller
+    can hit-test mouse clicks against it. When *hover* is True the
+    button brightens to give visual feedback.
+    """
+    text = "+ ADD FAMILY"
+    (tw, th), _ = cv2.getTextSize(
+        text, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2
+    )
+
+    pad_x, pad_y = 14, 10
+    bw, bh = tw + 2 * pad_x, th + 2 * pad_y
+    x1 = frame.shape[1] - 15
+    y1 = frame.shape[0] - 15
+    x0, y0 = x1 - bw, y1 - bh
+
+    fill = (0, 140, 0) if hover else (0, 100, 0)
+    border = _GREEN if hover else (0, 180, 0)
+
+    # Slightly translucent fill so the button reads as a UI element
+    overlay = frame.copy()
+    cv2.rectangle(overlay, (x0, y0), (x1, y1), fill, -1)
+    cv2.addWeighted(overlay, 0.85, frame, 0.15, 0, frame)
+    cv2.rectangle(frame, (x0, y0), (x1, y1), border, 2)
+
+    cv2.putText(
+        frame,
+        text,
+        (x0 + pad_x, y1 - pad_y),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.6,
+        _WHITE,
+        2
+    )
+
+    return (x0, y0, x1, y1)

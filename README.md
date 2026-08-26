@@ -3,7 +3,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.12%2B-3776AB.svg?logo=python&logoColor=white" alt="Python 3.12+">
   <img src="https://img.shields.io/badge/OpenCV-5.x-5C3EE8.svg?logo=opencv&logoColor=white" alt="OpenCV">
-  <img src="https://img.shields.io/badge/Tests-32%20passing-brightgreen.svg" alt="32 tests passing">
+  <img src="https://img.shields.io/badge/Tests-40%20passing-brightgreen.svg" alt="40 tests passing">
   <img src="https://img.shields.io/badge/Platform-PC%20%7C%20Raspberry%20Pi%205%20%7C%20ESP32--CAM-orange.svg" alt="Platforms">
   <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="MIT License">
 </p>
@@ -20,6 +20,7 @@
 | | |
 | --- | --- |
 | 👪 **Knows your family** | Guided registration learns faces; names appear in green with confidence % |
+| ➕ **One-click enrollment** | Click the `+ ADD FAMILY` button in the live view — type a name, then follow the glowing LEFT → CENTER → RIGHT zones |
 | 🚨 **Catches strangers** | Red `UNKNOWN PERSON DETECTED` banner, countdown, snapshots, loud siren |
 | 🇳🇵 **Nepal Time aware** | Day mode (2-min siren) and Night Security mode from 10 PM (5-min siren) |
 | 🐾 **No false alarms** | YOLOv8 suppresses the siren when only animals are in view |
@@ -242,7 +243,26 @@ python main.py
 
 ## 👪 Family Registration
 
-Before running the main system, register the people it should recognize:
+There are **two ways** to add a family member — both use the same quality
+gates and save photos to `family/<name>/`.
+
+### Option 1 — In-app (easiest) ➕
+
+While the system is running, click the green **`+ ADD FAMILY`** button in
+the bottom-right corner of the live view (or press **`a`**):
+
+1. **Type the name** on the keyboard → `Enter` to confirm, `Esc` to cancel
+2. **Follow the glowing zone** — the screen splits into LEFT / CENTER /
+   RIGHT thirds and one glows green at a time. Move your face into the
+   glowing zone and hold still; a photo is captured automatically and the
+   **next zone lights up**. Cycling left → center → right collects the
+   varied poses recognition needs.
+3. After 10 photos (or `Q`/`Esc` to finish early), monitoring resumes and
+   the new person is recognized **immediately** — no restart needed.
+
+The alarm is paused during enrollment, so registration is calm and safe.
+
+### Option 2 — Command line
 
 ```bash
 python register.py
@@ -405,6 +425,7 @@ All pipeline stages are separate modules in the `cctv/` package; `main.py` is a 
 │   ├── siren.py        # Siren audio control + auto-stop timer
 │   ├── storage.py      # SQLite + file event logging + retention
 │   ├── quality.py      # Registration quality checks (blur, brightness, dupes)
+│   ├── enroll.py       # In-app 'Add Family' flow (name entry + zone capture)
 │   ├── hud.py          # All on-screen overlay drawing
 │   ├── timeutil.py     # Nepal Time clock + day/night security mode
 │   └── hardware.py     # Device abstraction (pc / pi / esp32)
@@ -542,6 +563,7 @@ sqlite3 logs/events.db "SELECT * FROM events ORDER BY id DESC LIMIT 10;"
 | --- | --- |
 | `Q` | Quit the system |
 | `S` | Stop / silence the siren |
+| `A` | Add a family member (same as the `+ ADD FAMILY` button) |
 
 ---
 
