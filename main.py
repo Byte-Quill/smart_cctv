@@ -53,6 +53,7 @@ from cctv.hud import (
     draw_mode,
     draw_status,
     draw_fps,
+    draw_unknown_alert,
 )
 from cctv.motion import MotionDetector
 from cctv.tracking import match_tracks
@@ -293,6 +294,10 @@ def main():
 
         # Draw all tracked faces with smoothed boxes
         draw_face_boxes(frame, displayed_faces)
+
+        # Prominent red banner whenever an unknown face is on screen
+        if unknown_faces:
+            draw_unknown_alert(frame)
 
         frame_counter += 1
 
