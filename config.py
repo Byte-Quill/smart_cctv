@@ -276,6 +276,16 @@ TARGET_PHOTOS = 10
 # Consecutive good frames needed before a photo is snapped automatically.
 AUTO_CAPTURE_STABLE_FRAMES = 8
 
+# In-app enrollment (cctv/enroll.py): seconds between auto-captures.
+# While the face passes the quality gates, a photo is saved every
+# ENROLL_CAPTURE_INTERVAL seconds automatically — no zones, no buttons;
+# the user just looks at the camera and slowly turns their face.
+ENROLL_CAPTURE_INTERVAL = 1.2
+
+# Detection resolution scale used by the enrollment screen. Smaller
+# keeps the live video smooth; saved photos are always full resolution.
+ENROLL_DETECT_SCALE = 0.5
+
 # Minimum face height (full resolution) for a registration capture.
 MIN_REG_FACE_SIZE = 80
 

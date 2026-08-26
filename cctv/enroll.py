@@ -7,13 +7,14 @@ the user through two screens, all inside the same window:
 1. NAME — type the person's name on the keyboard. Enter confirms,
    Backspace edits, Esc cancels.
 
-2. CAPTURE — guided left-to-right face collection. The screen is split
-   into three zones (LEFT, CENTER, RIGHT) and one zone glows green at a
-   time. The user moves their face into the glowing zone and holds it
-   there; when the frame is sharp, well lit, and a new pose, a photo is
-   saved automatically and the NEXT zone lights up. Cycling left →
-   center → right collects the varied poses recognition needs, so
-   anyone's face can be added quickly and easily.
+2. CAPTURE — fully automatic face collection. The user simply looks at
+   the camera; while the face is sharp, well lit and big enough, a
+   photo is saved automatically every ENROLL_CAPTURE_INTERVAL seconds.
+   Pose variety comes from a duplicate-pose check: a photo too similar
+   to one already taken is rejected with a "turn your face" hint, so
+   the saved set naturally covers different angles. Detection runs on a
+   downscaled frame and the expensive encoding is computed only at the
+   moment of capture, so the live video stays smooth.
 
 The quality gates are exactly the ones ``register.py`` uses
 (cctv/quality.py), so both doors build equally strong reference sets.
@@ -31,13 +32,14 @@ import numpy as np
 from config import (
     FAMILY_DIR,
     TARGET_PHOTOS,
-    AUTO_CAPTURE_STABLE_FRAMES,
+    ENROLL_CAPTURE_INTERVAL,
+    ENROLL_DETECT_SCALE,
+    BLUR_THRESHOLD,
 )
 
 from cctv.quality import (
     estimate_blur,
     brightness_ok,
-    blur_ok,
     face_large_enough,
     compute_encoding,
     load_existing_encodings,
@@ -54,7 +56,6 @@ _WHITE = (255, 255, 255)
 _GRAY = (160, 160, 160)
 _AMBER = (0, 255, 255)
 
-_ZONES = ("LEFT", "CENTER", "RIGHT")
 _NAME_CHARS_MAX = 24
 _THUMB_SIZE = 56
 
@@ -100,34 +101,6 @@ def _center_text(display, text, y, scale, color, thickness=2):
         display, text, (x, y),
         cv2.FONT_HERSHEY_SIMPLEX, scale, color, thickness
     )
-
-
-def _draw_zones(display, target_idx: int) -> None:
-    """Split the frame into thirds and highlight the target zone green."""
-    h, w = display.shape[:2]
-    third = w // 3
-
-    # Translucent green fill over the target zone
-    fill = display.copy()
-    x0 = target_idx * third
-    x1 = (target_idx + 1) * third if target_idx < 2 else w
-    cv2.rectangle(fill, (x0, 0), (x1, h), _GREEN, -1)
-    cv2.addWeighted(fill, 0.12, display, 0.88, 0, display)
-
-    # Divider lines + zone labels
-    for i in (1, 2):
-        cv2.line(display, (i * third, 0), (i * third, h), (120, 120, 120), 1)
-
-    for i, label in enumerate(_ZONES):
-        (lw, _), _ = cv2.getTextSize(
-            label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2
-        )
-        color = _GREEN if i == target_idx else _GRAY
-        zx = i * third + max((third - lw) // 2, 5)
-        cv2.putText(
-            display, label, (zx, 95),
-            cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2
-        )
 
 
 def _thumbnail(frame, face_box, size: int = _THUMB_SIZE):
@@ -215,11 +188,23 @@ def run_name_entry(camera):
 
 
 # ----------------------------------------------------------------------
-# Screen 2 — guided left-to-right capture
+# Screen 2 — automatic capture (no zones, just look at the camera)
 # ----------------------------------------------------------------------
 
 def run_capture(camera, safe_name: str) -> int:
-    """Guided zone capture. Returns the number of photos saved."""
+    """Automatic face capture. Returns the number of photos saved.
+
+    The user only has to look at the camera and slowly turn their face.
+    While the face passes the quality gates, one photo is saved every
+    ENROLL_CAPTURE_INTERVAL seconds. A duplicate-pose check rejects
+    photos too similar to ones already kept, which naturally collects
+    the varied angles recognition needs.
+
+    Performance: detection runs on a frame downscaled by
+    ENROLL_DETECT_SCALE, and the expensive 128-d encoding is computed
+    ONLY at the moment a capture fires — never per frame — so the live
+    video stays smooth even on low-power hardware.
+    """
     folder = os.path.join(FAMILY_DIR, safe_name)
     os.makedirs(folder, exist_ok=True)
 
@@ -228,14 +213,18 @@ def run_capture(camera, safe_name: str) -> int:
     thumbnails = []
 
     captured = 0
-    target_zone = 0
-    stable = 0
-    status = f"Move your face into the {_ZONES[0]} zone"
+    last_capture = 0.0  # time of last save OR rejected duplicate
+    status = "Look at the camera"
     status_color = _WHITE
+
+    scale = ENROLL_DETECT_SCALE
+    # Blur is measured on the downscaled frame, so scale the threshold
+    # the same way cctv/faces.py does for the live pipeline.
+    min_blur = BLUR_THRESHOLD * (scale ** 2)
 
     print(
         f"[ENROLL] Capturing up to {TARGET_PHOTOS} photos of "
-        f"'{safe_name}' (zones cycle LEFT -> CENTER -> RIGHT)."
+        f"'{safe_name}' (auto-capture every {ENROLL_CAPTURE_INTERVAL}s)."
     )
 
     while True:
@@ -245,73 +234,69 @@ def run_capture(camera, safe_name: str) -> int:
             continue
 
         display = frame.copy()
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         h, w = display.shape[:2]
 
-        _draw_zones(display, target_zone)
-
-        # ── detect the largest face (full-res HOG, same as register.py) ──
-        face_locs = face_recognition.face_locations(rgb, model="hog")
+        # ── cheap detection on a downscaled frame (keeps video smooth) ──
+        small = cv2.resize(frame, None, fx=scale, fy=scale)
+        rgb_small = cv2.cvtColor(small, cv2.COLOR_BGR2RGB)
+        face_locs = face_recognition.face_locations(rgb_small, model="hog")
 
         quality_ok = False
-        in_zone = False
-        face_box = None
-        face_encoding = None
+        face_box = None  # full-resolution box for display/saving
 
         if face_locs:
             sizes = [(b - t) for (t, r, b, l) in face_locs]
             best = int(np.argmax(sizes))
-            top, right, bottom, left = face_locs[best]
+            st, sr, sb, sl = face_locs[best]
+            top = int(st / scale)
+            right = min(int(sr / scale), w)
+            bottom = min(int(sb / scale), h)
+            left = int(sl / scale)
             face_box = (top, right, bottom, left)
-            center_x = (left + right) // 2
-            in_zone = zone_index(center_x, w) == target_zone
 
             face_h = bottom - top
-            brightness = gray.mean()
+            gray_small = cv2.cvtColor(rgb_small, cv2.COLOR_RGB2GRAY)
+            brightness = gray_small.mean()
+            blur_val = estimate_blur(gray_small[st:sb, sl:sr])
 
-            # Quality gate chain (size → light → blur → duplicate pose)
+            # Quality gate chain (size → light → blur)
             if not face_large_enough(face_h):
                 status, status_color = "Come closer (face too small)", _AMBER
             elif not brightness_ok(brightness):
                 status, status_color = "Fix the lighting", _AMBER
+            elif blur_val < min_blur:
+                status, status_color = "Hold still (blurry)", _AMBER
             else:
-                blur_val = estimate_blur(gray[top:bottom, left:right])
-                if not blur_ok(blur_val):
-                    status, status_color = "Hold still (blurry)", _AMBER
-                else:
-                    face_roi = rgb[top:bottom, left:right]
-                    try:
-                        enc = (
-                            compute_encoding(face_roi)
-                            if face_roi.size > 0 else None
-                        )
-                    except Exception:
-                        enc = None
-                    if enc is None:
-                        status, status_color = "Face not clear, adjust", _AMBER
-                    elif is_duplicate_pose(
-                        enc, known_encs + session_encs
-                    ):
-                        status, status_color = "New pose please (duplicate)", _AMBER
-                    else:
-                        face_encoding = enc
-                        quality_ok = True
-                        if in_zone:
-                            status, status_color = "Hold still...", _GREEN
-                        else:
-                            status, status_color = (
-                                f"Good! Now move to the "
-                                f"{_ZONES[target_zone]} zone",
-                                _GREEN,
-                            )
+                quality_ok = True
+                status, status_color = (
+                    "Good! Slowly turn your face left and right", _GREEN
+                )
         else:
-            status, status_color = "No face found", _GRAY
+            status, status_color = "No face found — look at the camera", _GRAY
 
-        # ── auto-capture: good face held in the target zone ──
-        if quality_ok and in_zone:
-            stable += 1
-            if stable >= AUTO_CAPTURE_STABLE_FRAMES:
+        # ── auto-capture: good face + interval elapsed ──
+        # The expensive encoding + duplicate check happen ONLY here, at
+        # capture time — not on every frame.
+        now = time.time()
+        if quality_ok and (now - last_capture) >= ENROLL_CAPTURE_INTERVAL:
+            top, right, bottom, left = face_box
+            rgb_full = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            face_roi = rgb_full[top:bottom, left:right]
+            try:
+                enc = (
+                    compute_encoding(face_roi)
+                    if face_roi.size > 0 else None
+                )
+            except Exception:
+                enc = None
+
+            if enc is None:
+                status, status_color = "Face not clear, adjust", _AMBER
+                last_capture = now  # wait a full interval before retrying
+            elif is_duplicate_pose(enc, known_encs + session_encs):
+                status, status_color = "Same pose — turn your face", _AMBER
+                last_capture = now
+            else:
                 stamp = nepal_now().strftime("%Y%m%d_%H%M%S")
                 fname = (
                     f"face_{len(known_encs) + captured + 1:02d}_{stamp}.jpg"
@@ -319,27 +304,23 @@ def run_capture(camera, safe_name: str) -> int:
                 cv2.imwrite(os.path.join(folder, fname), frame)
 
                 captured += 1
-                session_encs.append(face_encoding)
+                session_encs.append(enc)
                 thumbnails.append(_thumbnail(frame, face_box))
-                stable = 0
-                target_zone = (target_zone + 1) % len(_ZONES)
+                last_capture = now
                 print(
                     f"[ENROLL] captured {captured}/{TARGET_PHOTOS} ({fname})"
                 )
-        else:
-            stable = 0
 
-        # ── face box + hold-still progress bar ──
+        # ── face box + countdown bar to the next photo ──
         if face_box is not None:
             t, r, b, l = face_box
-            color = (
-                _GREEN if (quality_ok and in_zone)
-                else _AMBER if quality_ok
-                else _RED
-            )
+            color = _GREEN if quality_ok else _AMBER
             cv2.rectangle(display, (l, t), (r, b), color, 2)
-            if quality_ok and in_zone:
-                pct = stable / AUTO_CAPTURE_STABLE_FRAMES
+            if quality_ok:
+                pct = min(
+                    1.0,
+                    (now - last_capture) / ENROLL_CAPTURE_INTERVAL
+                )
                 bar_w = int((r - l) * pct)
                 cv2.rectangle(
                     display, (l, b + 6), (l + bar_w, b + 12), _GREEN, -1
@@ -383,6 +364,12 @@ def run_capture(camera, safe_name: str) -> int:
                 display[y:y + _THUMB_SIZE, x:x + _THUMB_SIZE] = thumb
                 x += _THUMB_SIZE + gap
 
+        cv2.putText(
+            display,
+            "Just look at the camera — photos are taken automatically",
+            (15, h - 32),
+            cv2.FONT_HERSHEY_SIMPLEX, 0.5, _GRAY, 1
+        )
         cv2.putText(
             display, "Q / ESC = finish and keep photos", (15, h - 12),
             cv2.FONT_HERSHEY_SIMPLEX, 0.5, _GRAY, 1

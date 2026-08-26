@@ -48,7 +48,10 @@ cctv/
 > **In-app enrollment:** `cctv/enroll.py` reuses the same
 > quality gates to add a family member from inside the live view —
 > click the `+ ADD FAMILY` button (or press `a`), type a name, then
-> follow the glowing LEFT → CENTER → RIGHT capture zones.
+> just look at the camera: photos are captured automatically every
+> ~1.2s while the face is sharp, and a duplicate-pose check collects
+> varied angles. Detection runs on a downscaled frame and encodings
+> are computed only at capture time, so the video stays smooth.
 ├── hud.py        → every on-screen overlay the main loop draws
 ├── timeutil.py   → Nepal Time clock + day/night security mode logic
 └── hardware.py   → device abstraction (pc / pi / esp32) for future ports
