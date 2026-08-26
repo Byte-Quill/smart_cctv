@@ -214,21 +214,27 @@ On-screen display: green boxes for family, red boxes for unknown, status overlay
 
 ---
 
-## Night Mode
+## Security Modes & Siren (Nepal Time)
 
-When the current time is outside the `ALLOWED_START_HOUR`–`ALLOWED_END_HOUR` window:
+All time-of-day logic uses **Nepal Time** (NPT, UTC+5:45) via
+`cctv/timeutil.py`, so the system behaves correctly no matter what
+timezone the host machine is set to.
 
-- The display switches to **NIGHT MODE** (amber text)
-- The unknown alert delay drops from `UNKNOWN_DELAY_SECONDS` (10s) to `NIGHT_UNKNOWN_DELAY_SECONDS` (2s)
+| Mode | Nepal time | Confirm delay | Siren duration |
+| --- | --- | --- | --- |
+| Day | 06:00-22:00 | 10s (`UNKNOWN_DELAY_SECONDS`) | 2 min (`SIREN_DAY_DURATION`) |
+| Night security | 22:00-06:00 | 2s (`NIGHT_UNKNOWN_DELAY_SECONDS`) | 5 min (`SIREN_NIGHT_DURATION`) |
 
-> **Note on the siren:** by design, the audible siren only sounds during
-> **allowed hours**. Outside that window the system still confirms unknowns,
-> saves snapshots, and shows the countdown, but it will **not** trigger the
-> loud siren (to avoid disturbing neighbors overnight). If you want around-
-> the-clock siren coverage, extend `ALLOWED_END_HOUR` to `24` (or set
-> `ALLOWED_START_HOUR`/`ALLOWED_END_HOUR` to span the full day).
-
-This provides rapid response during nighttime hours when intrusions are most likely.
+- **Night security mode arms automatically at 10 PM** Nepal time; the
+  display switches to **NIGHT SECURITY MODE** (amber text) and the
+  response becomes faster with a longer siren.
+- **The siren never runs forever.** Once triggered it auto-stops after
+  the mode's duration (2 min day / 5 min night). A family member can
+  silence it early by pressing **`s`** in the window.
+- After an auto-stop, a `SIREN_RETRIGGER_COOLDOWN` (60s) prevents an
+  immediate re-trigger loop, giving the family time to respond.
+- Animals still suppress the alarm (YOLO), and a confirmed human
+  shortens the delay to `UNKNOWN_HUMAN_DELAY_SECONDS`.
 
 ---
 
@@ -366,15 +372,19 @@ All tunable parameters live in `config.py`.
 | Setting | Default | Description |
 | --- | --- | --- |
 | `UNKNOWN_DELAY_SECONDS` | `10` | Seconds an unknown must linger before siren (daytime) |
-| `NIGHT_UNKNOWN_DELAY_SECONDS` | `2` | Seconds before siren outside allowed hours |
+| `NIGHT_UNKNOWN_DELAY_SECONDS` | `2` | Seconds before siren in night security mode |
 | `UNKNOWN_HUMAN_DELAY_SECONDS` | `1` | Seconds before siren when YOLO confirms a human |
+| `SIREN_DAY_DURATION` | `120` | Siren auto-stop duration in daytime (2 min) |
+| `SIREN_NIGHT_DURATION` | `300` | Siren auto-stop duration in night mode (5 min) |
+| `SIREN_RETRIGGER_COOLDOWN` | `60` | Seconds before the siren may re-trigger after auto-stop |
 
-### Operating Hours
+### Security Mode Hours (Nepal Time)
 
 | Setting | Default | Description |
 | --- | --- | --- |
-| `ALLOWED_START_HOUR` | `6` | Hour monitoring begins (24h) |
-| `ALLOWED_END_HOUR` | `22` | Hour monitoring ends (24h) |
+| `NIGHT_START_HOUR` | `22` | Hour night security mode arms (10 PM NPT) |
+| `NIGHT_END_HOUR` | `6` | Hour night security mode ends (6 AM NPT) |
+| `NEPAL_UTC_OFFSET_MINUTES` | `345` | Nepal Time offset (UTC+5:45) |
 
 ### Snapshots and Logging
 

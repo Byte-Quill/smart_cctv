@@ -50,6 +50,20 @@ if PERFORMANCE_MODE not in ("low", "balanced", "high"):
 LOW_POWER = PERFORMANCE_MODE == "low"
 
 # ----------------------------------------------------------------------
+# 0b. HARDWARE PROFILE (future device portability)
+# ----------------------------------------------------------------------
+# The system is designed to move to smaller boards later (Raspberry Pi 5,
+# or an ESP32-CAM running a companion capture service). All device-
+# specific behaviour (camera backend, siren output, GPIO relay) lives
+# behind cctv/hardware.py, which reads this setting.
+#
+#   "pc"     — desktop/laptop: OpenCV camera + pygame WAV siren (default)
+#   "pi"     — Raspberry Pi 5: same stack, plus optional GPIO relay hook
+#   "esp32"  — ESP32-CAM: frames arrive over a network stream; the heavy
+#              pipeline still runs on a host machine
+HARDWARE_PROFILE = "pc"
+
+# ----------------------------------------------------------------------
 # 1. RUNTIME PATHS
 # ----------------------------------------------------------------------
 # One sub-folder per registered family member, each holding that person's
@@ -167,17 +181,45 @@ UNKNOWN_DELAY_SECONDS = 10
 # Faster delay used when YOLO confirms a human is present.
 UNKNOWN_HUMAN_DELAY_SECONDS = 1
 
-# Faster delay used outside the allowed-hours window (night mode).
+# Faster delay used in night security mode.
 NIGHT_UNKNOWN_DELAY_SECONDS = 2
-
-# The siren only sounds within this daily window (start..end hour).
-# Outside it the system still confirms, snapshots, and shows a countdown,
-# but does not play the loud siren.
-ALLOWED_START_HOUR = 6
-ALLOWED_END_HOUR = 22
 
 # Alarm sound file (relative to the project root).
 SIREN_FILE = "sounds/siren.wav"
+
+# ----------------------------------------------------------------------
+# 8b. SIREN AUTO-SHUTDOWN & NEPAL-TIME SECURITY MODES
+# ----------------------------------------------------------------------
+# The siren never runs forever. Once triggered it auto-stops after a
+# fixed duration, and a family member can silence it early (press "s" in
+# the window, or call Siren.stop()).
+#
+# Durations depend on the time of day, using NEPAL TIME (NPT, UTC+5:45):
+#   • Daytime   (06:00-22:00 NPT) → siren runs SIREN_DAY_DURATION.
+#   • Night mode (22:00-06:00 NPT) → SECURITY MODE arms automatically at
+#     NIGHT_START_HOUR; the siren runs the longer SIREN_NIGHT_DURATION.
+#
+# All clock checks go through cctv/timeutil.py so the whole system uses
+# one consistent Nepal-time clock regardless of the host's timezone.
+# Siren auto-stop duration during the day (seconds). 2 minutes.
+SIREN_DAY_DURATION = 120
+
+# Siren auto-stop duration in night security mode (seconds). 5 minutes.
+SIREN_NIGHT_DURATION = 300
+
+# After the siren auto-stops, wait this long before it may re-trigger,
+# even if the unknown person is still present. Prevents an endless
+# stop/restart cycle and gives the family time to respond.
+SIREN_RETRIGGER_COOLDOWN = 60
+
+# Hour (Nepal time) when night security mode begins. 22 = 10 PM.
+NIGHT_START_HOUR = 22
+
+# Hour (Nepal time) when night security mode ends and day mode resumes.
+NIGHT_END_HOUR = 6
+
+# Nepal Time is a fixed UTC+5:45 offset (no daylight saving).
+NEPAL_UTC_OFFSET_MINUTES = 345
 
 # ----------------------------------------------------------------------
 # 9. SNAPSHOTS & LOGGING

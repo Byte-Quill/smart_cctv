@@ -41,10 +41,12 @@ cctv/
 ├── tracking.py   → smooth boxes over time, majority-vote identity
 ├── motion.py     → cheap motion gate that skips heavy work when idle
 ├── yolo.py       → optional animal/human scene analysis (false alarms)
-├── siren.py      → looping alarm sound, thread-safe on/off
+├── siren.py      → looping alarm sound, thread-safe, auto-stops on a timer
 ├── storage.py    → SQLite events DB + text audit log + retention
 ├── quality.py    → blur/brightness/size/duplicate checks (registration)
-└── hud.py        → every on-screen overlay the main loop draws
+├── hud.py        → every on-screen overlay the main loop draws
+├── timeutil.py   → Nepal Time clock + day/night security mode logic
+└── hardware.py   → device abstraction (pc / pi / esp32) for future ports
 ```
 
 Read them in that order and you have read the whole system.
@@ -108,6 +110,33 @@ camera.read()
 
 ---
 
+## 5b. Security modes & the siren lifecycle
+
+All time-of-day decisions use **Nepal Time** (NPT, UTC+5:45) via
+`cctv/timeutil.py`, so behaviour is correct regardless of the host's
+timezone.
+
+| Mode           | Nepal time  | Confirm delay                      | Siren duration                 |
+| -------------- | ----------- | ---------------------------------- | ------------------------------ |
+| Day            | 06:00–22:00 | `UNKNOWN_DELAY_SECONDS` (10s)      | `SIREN_DAY_DURATION` (2 min)   |
+| Night security | 22:00–06:00 | `NIGHT_UNKNOWN_DELAY_SECONDS` (2s) | `SIREN_NIGHT_DURATION` (5 min) |
+
+The siren lifecycle:
+
+1. An unknown face is confirmed and the mode's delay elapses →
+   `siren.start(duration=...)` is called.
+2. The siren loops and arms a background **auto-stop timer** for the
+   mode's duration (2 min day / 5 min night).
+3. It stops early if a family member presses **`s`** in the window, or
+   automatically when the timer expires (`SIREN_AUTO_OFF` event).
+4. A `SIREN_RETRIGGER_COOLDOWN` then prevents an immediate re-trigger
+   loop, giving the family time to respond.
+
+Animals still suppress the alarm (YOLO), and a confirmed human shortens
+the delay to `UNKNOWN_HUMAN_DELAY_SECONDS`.
+
+---
+
 ## 6. Configuration — one file, three tiers
 
 Every tunable lives in `config.py`. The single most important switch is
@@ -121,6 +150,28 @@ Every tunable lives in `config.py`. The single most important switch is
 
 The profiles only change values of existing knobs — no feature is ever
 removed. See the README "Performance Profiles" section for details.
+
+---
+
+## 6b. Future hardware: Raspberry Pi 5 & ESP32
+
+The system is built to move to smaller boards. All device-specific code
+lives behind `cctv/hardware.py`, selected by `HARDWARE_PROFILE` in
+`config.py`:
+
+| Profile | Device                   | Camera              | Notes                                                 |
+| ------- | ------------------------ | ------------------- | ----------------------------------------------------- |
+| `pc`    | desktop/laptop (default) | local webcam        | current target                                        |
+| `pi`    | Raspberry Pi 5           | Pi camera / USB cam | same stack; add GPIO relay hook for an external siren |
+| `esp32` | ESP32-CAM                | MJPEG/RTSP stream   | board only captures; the face pipeline runs on a host |
+
+To port, implement the new camera/siren behaviour inside `hardware.py`
+(and, for a GPIO-driven siren, subclass the siren output). `main.py` only
+ever calls `hardware.open_camera()`, so nothing else changes.
+
+For an ESP32-CAM, set `CAMERA_INDEX` to the board's stream URL
+(e.g. `http://192.168.1.50:81/stream`) — OpenCV decodes it like a local
+camera. Pair `PERFORMANCE_MODE = "low"` with these boards.
 
 ---
 

@@ -64,10 +64,10 @@ def draw_family_text(frame, names: list, x: int = 20, y: int = 80) -> None:
     )
 
 
-def draw_mode(frame, allowed: bool, x: int = 20) -> None:
-    """Draw the 'ALLOWED TIME' / 'NIGHT MODE' line at the bottom."""
-    text = "ALLOWED TIME" if allowed else "NIGHT MODE"
-    color = _GREEN if allowed else _YELLOW
+def draw_mode(frame, night_mode: bool, x: int = 20) -> None:
+    """Draw the 'DAY MODE' / 'NIGHT SECURITY' line at the bottom."""
+    text = "NIGHT SECURITY MODE" if night_mode else "DAY MODE"
+    color = _YELLOW if night_mode else _GREEN
     cv2.putText(
         frame,
         text,

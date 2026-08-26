@@ -43,18 +43,11 @@ import time
 
 import cv2
 
-from datetime import datetime
-
 from config import (
-    CAMERA_INDEX,
-    CAMERA_WIDTH,
-    CAMERA_HEIGHT,
     FACE_TOLERANCE,
     UNKNOWN_CONFIRMATIONS,
     UNKNOWN_DELAY_SECONDS,
     NIGHT_UNKNOWN_DELAY_SECONDS,
-    ALLOWED_START_HOUR,
-    ALLOWED_END_HOUR,
     SNAPSHOT_INTERVAL,
     SIGHTING_LOG_INTERVAL,
     DETECTION_SCALE,
@@ -72,6 +65,10 @@ from config import (
     ANIMAL_DETECTION_ENABLED,
     UNKNOWN_HUMAN_DELAY_SECONDS,
     SHOW_FPS,
+    SIREN_RETRIGGER_COOLDOWN,
+    SIREN_DAY_DURATION,
+    SIREN_NIGHT_DURATION,
+    NIGHT_START_HOUR,
 )
 
 from cctv.enhance import enhance_frame
@@ -99,25 +96,18 @@ from cctv.storage import (
     logger,
     enforce_retention,
 )
+from cctv import hardware
+from cctv.timeutil import (
+    is_night_mode,
+    siren_duration,
+    nepal_now,
+)
 
 
 # Create needed folders if missing
 os.makedirs(FAMILY_DIR, exist_ok=True)
 os.makedirs(SNAPSHOT_DIR, exist_ok=True)
 os.makedirs(LOG_DIR, exist_ok=True)
-
-
-# True only during the allowed hours of the day
-def is_allowed_time():
-
-    hour = datetime.now().hour
-
-    return (
-        ALLOWED_START_HOUR
-        <= hour
-        <
-        ALLOWED_END_HOUR
-    )
 
 
 def main():
@@ -157,21 +147,18 @@ def main():
     )
 
     print(
-        f"Allowed time: "
-        f"{ALLOWED_START_HOUR:02d}:00 - "
-        f"{ALLOWED_END_HOUR:02d}:00"
+        f"Security modes (Nepal time): "
+        f"day siren {SIREN_DAY_DURATION}s, "
+        f"night mode from {NIGHT_START_HOUR:02d}:00 "
+        f"siren {SIREN_NIGHT_DURATION}s"
     )
 
     print("--------------------------------\n")
 
-    # Open the camera and set its resolution
-    camera = cv2.VideoCapture(CAMERA_INDEX)
-
-    camera.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_WIDTH)
-    camera.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_HEIGHT)
-    # Keep the driver queue at a single frame so the display never lags
-    # behind real time while the pipeline is busy.
-    camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    # Open the camera through the hardware abstraction layer so the same
+    # code runs on a PC today and on a Raspberry Pi 5 / ESP32-CAM later.
+    camera = hardware.open_camera()
+    print(f"Camera: {hardware.describe()}")
 
     if not camera.isOpened():
         raise RuntimeError("Could not open camera.")
@@ -182,6 +169,7 @@ def main():
 
     last_snapshot = 0
     last_sighting = {}  # person -> timestamp of last FAMILY_SIGHTING log
+    last_siren_trigger = 0  # re-trigger cooldown anchor for the siren
 
     tracked_faces = {}
     frame_counter = 0
@@ -216,10 +204,7 @@ def main():
                 camera.release()
                 time.sleep(wait)
 
-                camera = cv2.VideoCapture(CAMERA_INDEX)
-                camera.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_WIDTH)
-                camera.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_HEIGHT)
-                camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                camera = hardware.open_camera()
 
                 reconnect_attempts += 1
 
@@ -348,9 +333,9 @@ def main():
             else:
                 animal_seen, human_seen = False, False
 
-            # Shorter delay outside allowed hours (night mode),
+            # Shorter confirmation delay in night security mode,
             # fastest delay when YOLO confirms a human
-            if not is_allowed_time():
+            if is_night_mode():
                 active_delay = NIGHT_UNKNOWN_DELAY_SECONDS
             elif human_seen:
                 active_delay = UNKNOWN_HUMAN_DELAY_SECONDS
@@ -403,7 +388,7 @@ def main():
                         >= SNAPSHOT_INTERVAL
                     ):
 
-                        timestamp = datetime.now().strftime(
+                        timestamp = nepal_now().strftime(
                             "%Y%m%d_%H%M%S"
                         )
 
@@ -429,16 +414,38 @@ def main():
                     draw_countdown(frame, remaining)
 
                     # Trigger the siren once the delay has passed,
-                    # unless an animal (and no human) explains the scene
+                    # unless an animal (and no human) explains the scene.
+                    #
+                    # The siren sounds in BOTH modes now (Nepal time):
+                    #   • daytime        → SIREN_DAY_DURATION   (2 min)
+                    #   • night security → SIREN_NIGHT_DURATION (5 min)
+                    # It auto-stops after that duration (Siren timer), and
+                    # a cooldown prevents an immediate re-trigger loop.
 
                     animal_only = animal_seen and not human_seen
 
-                    if (
-                        elapsed
-                        >= active_delay
-                    ) and is_allowed_time() and not animal_only:
+                    cooled_down = (
+                        time.time() - last_siren_trigger
+                        >= SIREN_RETRIGGER_COOLDOWN
+                    )
 
-                        siren.start()
+                    if (
+                        elapsed >= active_delay
+                        and not animal_only
+                        and not siren.is_active
+                        and cooled_down
+                    ):
+
+                        duration = siren_duration()
+                        siren.start(duration=duration)
+                        last_siren_trigger = time.time()
+
+                        log_event(
+                            "SIREN_TRIGGERED",
+                            "UNKNOWN",
+                            f"mode={'NIGHT' if is_night_mode() else 'DAY'},"
+                            f" auto-stop={duration}s"
+                        )
 
             else:
 
@@ -462,9 +469,9 @@ def main():
                         log_event("FAMILY_SIGHTING", person=person)
                         last_sighting[person] = now
 
-            # Show whether we're inside the allowed hours
+            # Show whether night security mode is active (Nepal time)
 
-            draw_mode(frame, is_allowed_time())
+            draw_mode(frame, is_night_mode())
 
             # Show overall system status (alarm on or ok)
 

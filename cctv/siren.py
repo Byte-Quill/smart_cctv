@@ -1,4 +1,13 @@
-"""Siren audio control."""
+"""Siren audio control with automatic shutdown.
+
+The siren never runs forever: every activation carries a duration, and a
+background timer stops the alarm automatically when it expires. A family
+member can always silence it early (press "s" in the window, or call
+``Siren.stop()``).
+
+Durations come from the caller (main.py asks cctv/timeutil for the right
+value: 2 minutes in daytime, 5 minutes in night security mode).
+"""
 
 import threading
 
@@ -10,11 +19,17 @@ from cctv.storage import log_event, logger
 
 
 class Siren:
-    """Looping alarm sound with on/off state and event logging.
+    """Looping alarm sound with on/off state, auto-stop, and event logging.
 
     All public methods are guarded by a lock so the alarm can safely be
     triggered or silenced from any thread (e.g. a future worker thread
     without stalling the main camera loop).
+
+    Auto-shutdown
+    -------------
+    ``start(duration=N)`` arms a ``threading.Timer`` that calls ``stop()``
+    after N seconds. Starting again while active refreshes the timer, and
+    any manual stop cancels it, so there is exactly one timer at a time.
     """
 
     def __init__(self, sound_file: str = SIREN_FILE):
@@ -37,6 +52,7 @@ class Siren:
         self.sound = None
         self.active = False
         self._lock = threading.Lock()
+        self._auto_stop_timer: threading.Timer | None = None
 
         if self.mixer_ok:
             try:
@@ -48,13 +64,15 @@ class Siren:
                     "Siren could not be loaded: %s", error
                 )
 
-    # Turn the siren on (loops forever until stopped)
-    def start(self):
+    # Turn the siren on; it auto-stops after *duration* seconds.
+    def start(self, duration: float | None = None):
         with self._lock:
-            self._start_locked()
+            self._start_locked(duration)
 
-    def _start_locked(self):
+    def _start_locked(self, duration: float | None):
         if self.active:
+            # Already ringing — refresh the auto-stop timer only.
+            self._arm_timer_locked(duration)
             return
 
         print("\nSIREN ACTIVATED")
@@ -68,13 +86,44 @@ class Siren:
 
         log_event("SIREN_ON")
 
+        self._arm_timer_locked(duration)
+
+    def _arm_timer_locked(self, duration: float | None):
+        """(Re)arm the auto-stop timer. Caller must hold ``_lock``."""
+        # Cancel any previous timer so only one is ever pending.
+        if self._auto_stop_timer is not None:
+            self._auto_stop_timer.cancel()
+            self._auto_stop_timer = None
+
+        if duration is None:
+            return
+
+        timer = threading.Timer(duration, self._auto_stop)
+        timer.daemon = True  # never block process exit
+        timer.start()
+        self._auto_stop_timer = timer
+
+        logger.info("Siren will auto-stop in %.0fs", duration)
+
+    def _auto_stop(self):
+        """Timer callback: stop the siren and record why."""
+        with self._lock:
+            if not self.active:
+                return
+            print("\nSiren auto-stopped (duration expired).")
+            logger.info("SIREN AUTO-STOPPED (duration expired)")
+            self._stop_sound_locked()
+            self.active = False
+            self._auto_stop_timer = None
+            log_event("SIREN_AUTO_OFF")
+
     @property
     def is_active(self) -> bool:
         """Thread-safe read of the alarm state."""
         with self._lock:
             return self.active
 
-    # Turn the siren off
+    # Turn the siren off (family member silencing it early)
     def stop(self):
         with self._lock:
             self._stop_locked()
@@ -85,11 +134,20 @@ class Siren:
 
         print("\nSiren stopped.")
 
-        if self.sound is not None:
-            self.sound.stop()
+        self._stop_sound_locked()
 
         self.active = False
+
+        # Disarm the pending auto-stop timer, if any.
+        if self._auto_stop_timer is not None:
+            self._auto_stop_timer.cancel()
+            self._auto_stop_timer = None
 
         logger.info("SIREN STOPPED")
 
         log_event("SIREN_OFF")
+
+    def _stop_sound_locked(self):
+        """Silence the audio. Caller must hold ``_lock``."""
+        if self.sound is not None:
+            self.sound.stop()
