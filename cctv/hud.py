@@ -42,10 +42,14 @@ def draw_face_boxes(frame, faces) -> None:
 
 
 def draw_countdown(frame, remaining: float, x: int = 20, y: int = 40) -> None:
-    """Overlay the 'UNKNOWN - X.Xs' alarm countdown."""
+    """Overlay the siren countdown.
+
+    The red 'UNKNOWN PERSON DETECTED' banner is the single unknown
+    warning, so this only shows the time left before the siren fires.
+    """
     cv2.putText(
         frame,
-        f"UNKNOWN - {remaining:.1f}s",
+        f"SIREN IN {remaining:.1f}s",
         (x, y),
         cv2.FONT_HERSHEY_SIMPLEX,
         1,
