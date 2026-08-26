@@ -201,6 +201,9 @@ def main():
         if event == cv2.EVENT_LBUTTONDOWN:
             click_pos = (x, y)
 
+    # The window must exist before a mouse callback can be attached, so
+    # create it explicitly (imshow alone would create it too late).
+    cv2.namedWindow("Smart CCTV Security")
     cv2.setMouseCallback("Smart CCTV Security", on_mouse)
 
     def _open_enrollment():
