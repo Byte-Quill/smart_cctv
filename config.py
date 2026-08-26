@@ -123,8 +123,31 @@ ENABLE_CNN_FALLBACK = True
 # 4. FACE RECOGNITION
 # ----------------------------------------------------------------------
 # Maximum face_distance for a match to count. Lower = stricter.
-# dlib distances are roughly 0.0-0.6 for the same person.
-FACE_TOLERANCE = 0.45
+# dlib distances are roughly 0.0-0.6 for the same person. 0.42 is a
+# strong setting: it rejects look-alikes firmly while jittered
+# encodings (below) keep genuine family matches reliable.
+FACE_TOLERANCE = 0.42
+
+# When two family members are nearly equally close to a live face,
+# the match is ambiguous. Require the best match to beat the runner-up
+# by at least this margin, otherwise treat the face as UNKNOWN instead
+# of guessing the wrong person.
+MATCH_MARGIN = 0.04
+
+# Encoding quality (num_jitters): dlib computes the 128-d descriptor
+# from several slightly-perturbed crops and averages them. More
+# jitters = stronger, more stable encodings, but slower.
+#   REGISTRATION_JITTERS — used when building the family DB and during
+#     enrollment (one-time cost, accuracy matters most).
+#   RECOGNITION_JITTERS — used per live frame (kept at 1 so the low
+#     profile stays smooth).
+REGISTRATION_JITTERS = 5
+RECOGNITION_JITTERS = 1
+
+# A tracked face must collect at least this many votes before its
+# identity is shown/acted on. Prevents a single lucky frame from
+# flashing a wrong name or starting an alarm.
+IDENTITY_MIN_VOTES = 2
 
 # ----------------------------------------------------------------------
 # 5. FACE TRACKING

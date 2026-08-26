@@ -65,6 +65,14 @@ class TestMatchTracks(unittest.TestCase):
     def test_new_face_creates_track(self):
         tracks = match_tracks([((0, 10, 20, 0), "Alice", 0.9)], {}, 0)
         self.assertEqual(len(tracks), 1)
+        # A brand-new track has only 1 vote, so its identity is not yet
+        # confirmed (IDENTITY_MIN_VOTES = 2) — it reports UNKNOWN until
+        # a second matching frame arrives.
+        self.assertEqual(tracks[0].majority_name, "UNKNOWN")
+
+    def test_identity_confirmed_after_min_votes(self):
+        tracks = match_tracks([((0, 10, 20, 0), "Alice", 0.9)], {}, 0)
+        tracks = match_tracks([((0, 10, 20, 0), "Alice", 0.9)], tracks, 0)
         self.assertEqual(tracks[0].majority_name, "Alice")
 
     def test_skip_frame_decays_without_matching(self):

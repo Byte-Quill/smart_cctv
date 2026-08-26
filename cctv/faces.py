@@ -2,15 +2,20 @@
 
 import os
 
+import cv2
 import face_recognition
 import numpy as np
 
 from config import (
     FAMILY_DIR,
     FACE_TOLERANCE,
+    MATCH_MARGIN,
     MIN_FACE_SIZE,
     ENABLE_CNN_FALLBACK,
     DETECTION_SCALE,
+    REGISTRATION_JITTERS,
+    RECOGNITION_JITTERS,
+    BLUR_THRESHOLD,
 )
 
 
@@ -78,7 +83,8 @@ def load_family_database():
                 face_encoding = (
                     face_recognition.face_encodings(
                         image,
-                        locations
+                        locations,
+                        num_jitters=REGISTRATION_JITTERS
                     )[0]
                 )
 
@@ -133,6 +139,14 @@ def recognize_face(
     # Only a match if the distance is small enough
     if best_distance <= FACE_TOLERANCE:
 
+        # Ambiguity guard: if a second family member is almost equally
+        # close, the match is a coin flip — refuse to guess and treat
+        # the face as UNKNOWN instead of naming the wrong person.
+        if len(distances) > 1:
+            sorted_d = np.sort(distances)
+            if float(sorted_d[1] - sorted_d[0]) < MATCH_MARGIN:
+                return "UNKNOWN", best_distance, confidence
+
         return (
             known_names[best_index],
             best_distance,
@@ -179,7 +193,23 @@ def detect_faces_enhanced(rgb_frame_small, rgb_frame_full):
         except Exception:
             pass  # CNN model may not be available; silently fall back
 
+    # Quality gate: blurry faces produce unstable encodings that cause
+    # mis-recognition, so drop them before encoding. Blur is measured on
+    # the small frame's grayscale (cheap) with the registration threshold
+    # scaled to the detection resolution.
+    if locations:
+        gray_small = cv2.cvtColor(rgb_frame_small, cv2.COLOR_RGB2GRAY)
+        min_blur = BLUR_THRESHOLD * (DETECTION_SCALE ** 2)
+        sharp = []
+        for (t, r, b, l) in locations:
+            roi = gray_small[t:b, l:r]
+            if roi.size == 0:
+                continue
+            if cv2.Laplacian(roi, cv2.CV_64F).var() >= min_blur:
+                sharp.append((t, r, b, l))
+        locations = sharp
+
     encodings = face_recognition.face_encodings(
-        rgb_frame_small, locations
+        rgb_frame_small, locations, num_jitters=RECOGNITION_JITTERS
     )
     return locations, encodings

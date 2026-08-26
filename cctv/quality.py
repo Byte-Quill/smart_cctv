@@ -12,6 +12,7 @@ from config import (
     MIN_BRIGHTNESS,
     MAX_BRIGHTNESS,
     MIN_ENCODING_DISTANCE,
+    REGISTRATION_JITTERS,
 )
 
 
@@ -58,7 +59,9 @@ def compute_encoding(rgb_face: np.ndarray):
         locs = face_recognition.face_locations(padded, model="hog")
         if len(locs) != 1:
             return None
-        encs = face_recognition.face_encodings(padded, locs)
+        encs = face_recognition.face_encodings(
+            padded, locs, num_jitters=REGISTRATION_JITTERS
+        )
         return encs[0] if encs else None
     except Exception:
         return None

@@ -76,6 +76,19 @@ class TestRecognizeFace(unittest.TestCase):
         name, _, _ = recognize_face(enc, [far, enc], ["Bob", "Alice"])
         self.assertEqual(name, "Alice")
 
+    def test_ambiguous_match_returns_unknown(self):
+        # Two nearly identical encodings: best and runner-up are closer
+        # than MATCH_MARGIN, so the system must refuse to guess.
+        # The probe stays inside FACE_TOLERANCE of both candidates.
+        enc = make_encoding(10)
+        twin = enc + 0.001   # almost the same person
+        probe = enc + 0.02   # within tolerance of both
+        name, distance, _ = recognize_face(
+            probe, [enc, twin], ["Alice", "Alicia"]
+        )
+        self.assertEqual(name, "UNKNOWN")
+        self.assertIsNotNone(distance)
+
 
 if __name__ == "__main__":
     unittest.main()

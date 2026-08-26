@@ -81,7 +81,7 @@ flowchart TD
     B -- "Yes" --> C["✨ Enhance<br/>auto-gamma + CLAHE"]
     C --> D["🔍 Detect faces<br/>HOG on downscaled frame"]
     D --> E["🧬 Encode face<br/>128-d signature"]
-    E --> F{"🆔 Match family DB?<br/>distance ≤ 0.45"}
+    E --> F{"🆔 Match family DB?<br/>distance ≤ 0.42"}
     F -- "Yes" --> G["👪 FAMILY<br/>green box + name + confidence"]
     F -- "No" --> H["⚠️ UNKNOWN<br/>red box + banner"]
     H --> I{"🐾 YOLO scene check"}
@@ -301,7 +301,7 @@ Startup prints a summary:
 SMART CCTV
 --------------------------------
 Family face samples: 20
-Recognition tolerance: 0.45
+Recognition tolerance: 0.42
 Unknown delay: 10s
 Security modes (Nepal time): day siren 120s, night mode from 22:00 siren 300s
 Camera: hardware=pc camera_index=0 resolution=640x480
@@ -465,7 +465,11 @@ All tunable parameters live in `config.py`.
 
 | Setting | Default | Description |
 | --- | --- | --- |
-| `FACE_TOLERANCE` | `0.45` | Max Euclidean distance for a match (lower = stricter) |
+| `FACE_TOLERANCE` | `0.42` | Max Euclidean distance for a match (lower = stricter) |
+| `MATCH_MARGIN` | `0.04` | Best match must beat the runner-up by this margin, else UNKNOWN |
+| `REGISTRATION_JITTERS` | `5` | dlib jitters when building family encodings (stronger DB) |
+| `RECOGNITION_JITTERS` | `1` | dlib jitters per live frame (kept low for speed) |
+| `IDENTITY_MIN_VOTES` | `2` | Frames a face must be seen before its identity is trusted |
 | `UNKNOWN_CONFIRMATIONS` | `5` | Consecutive frames to confirm an unknown person |
 
 ### Alarm Timing
@@ -598,7 +602,7 @@ This restores the `pkg_resources` module needed by the older `face_recognition_m
 
 - Register more photos per person (aim for 10+ with varied angles)
 - Improve lighting during registration and monitoring
-- Lower `FACE_TOLERANCE` for stricter matching (try 0.4)
+- `FACE_TOLERANCE` is already strict (0.42); lower it further only if look-alikes are confused
 - Ensure photos contain exactly one face each
 - CNN fallback can help with difficult angles (balanced/high profiles)
 

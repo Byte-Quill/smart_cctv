@@ -9,6 +9,7 @@ from config import (
     TRACKING_SKIP_FRAMES,
     TRACKING_SMOOTH_ALPHA,
     TRACKING_PATIENCE,
+    IDENTITY_MIN_VOTES,
 )
 
 
@@ -26,8 +27,13 @@ class FaceHistory:
 
     @property
     def majority_name(self) -> str:
-        """Return the majority-vote name over the window."""
-        if not self.classes:
+        """Return the majority-vote name over the window.
+
+        An identity needs at least IDENTITY_MIN_VOTES votes before it is
+        trusted, so a single lucky frame cannot flash a wrong name or
+        start an alarm.
+        """
+        if len(self.classes) < IDENTITY_MIN_VOTES:
             return "UNKNOWN"
         counts = Counter(self.classes)
         return counts.most_common(1)[0][0]
