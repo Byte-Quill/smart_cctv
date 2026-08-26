@@ -69,6 +69,37 @@ class Siren:
                     "Siren could not be loaded: %s", error
                 )
 
+    def self_test(self, duration: float = 3.0):
+        """Play a short siren burst to verify audio is audible.
+
+        Used at startup when presenting the system. Deliberately NOT a
+        real activation: it does not set ``active``, does not touch
+        ``_last_stop`` (so the re-trigger cooldown is unaffected), and is
+        logged as ``SIREN_TEST``. A daemon timer guarantees the sound
+        stops after *duration* seconds no matter what.
+        """
+        with self._lock:
+            if self.sound is None:
+                print("\nSiren self-test skipped: no audio device.")
+                logger.info("Siren self-test skipped (no audio)")
+                return
+
+            print(f"\nSIREN SELF-TEST ({duration:.0f}s)...")
+            logger.info("SIREN SELF-TEST (%.0fs)", duration)
+
+            self.sound.play(-1)
+            log_event("SIREN_TEST")
+
+            def _end_test():
+                with self._lock:
+                    self._stop_sound_locked()
+                logger.info("SIREN SELF-TEST COMPLETE")
+                print("Siren self-test complete.")
+
+            timer = threading.Timer(duration, _end_test)
+            timer.daemon = True  # never block process exit
+            timer.start()
+
     # Turn the siren on; it auto-stops after *duration* seconds.
     def start(self, duration: float | None = None):
         with self._lock:

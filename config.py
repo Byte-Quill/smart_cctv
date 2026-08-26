@@ -214,6 +214,16 @@ NIGHT_UNKNOWN_DELAY_SECONDS = 2
 # Alarm sound file (relative to the project root).
 SIREN_FILE = "sounds/siren.wav"
 
+# Play a short audible siren burst when the system starts, so anyone
+# presenting the system can immediately confirm the alarm works.
+# The self-test is safe: it auto-silences after
+# STARTUP_SIREN_TEST_DURATION, does NOT count as a real activation, and
+# does not start the re-trigger cooldown, so real alarms are unaffected.
+STARTUP_SIREN_TEST = True
+
+# Length of the startup siren self-test (seconds).
+STARTUP_SIREN_TEST_DURATION = 3
+
 # ----------------------------------------------------------------------
 # 8b. SIREN AUTO-SHUTDOWN & NEPAL-TIME SECURITY MODES
 # ----------------------------------------------------------------------

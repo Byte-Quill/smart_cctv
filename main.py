@@ -35,7 +35,8 @@ Design notes
 - The loop is wrapped in try/finally so Ctrl+C or an error still releases
   the camera, silences the siren, and closes the window.
 
-Keyboard: ``q`` quits, ``s`` silences the siren, ``a`` (or clicking the
+Keyboard: ``q`` quits, ``s`` silences the siren, ``t`` plays a short
+siren self-test (safe, auto-stops), ``a`` (or clicking the
 ``+ ADD FAMILY`` button) opens the in-app family enrollment flow
 (cctv/enroll.py).
 """
@@ -70,6 +71,8 @@ from config import (
     SIREN_RETRIGGER_COOLDOWN,
     SIREN_DAY_DURATION,
     SIREN_NIGHT_DURATION,
+    STARTUP_SIREN_TEST,
+    STARTUP_SIREN_TEST_DURATION,
     NIGHT_START_HOUR,
     MIRROR_DISPLAY,
 )
@@ -122,6 +125,13 @@ def main():
     enforce_retention()
 
     siren = Siren()
+
+    # Audible power-on self-test so a presenter can confirm the alarm
+    # works. It auto-silences after a few seconds and never affects real
+    # alarm logic (not an activation, no cooldown side effects).
+    if STARTUP_SIREN_TEST:
+        siren.self_test(duration=STARTUP_SIREN_TEST_DURATION)
+
     detector = ObjectDetector(enabled=ANIMAL_DETECTION_ENABLED)
     motion = MotionDetector(
         threshold=MOTION_THRESHOLD,
@@ -565,6 +575,7 @@ def main():
             )
 
             # Keyboard controls: q quits, s stops the siren,
+            # t plays a short siren self-test,
             # a opens the add-family-member flow
 
             key = cv2.waitKey(1) & 0xFF
@@ -576,6 +587,13 @@ def main():
             elif key == ord("s"):
 
                 siren.stop()
+
+            elif key == ord("t"):
+
+                # Audible self-test on demand — safe: auto-stops after
+                # STARTUP_SIREN_TEST_DURATION and never affects real
+                # alarm state or the re-trigger cooldown.
+                siren.self_test(duration=STARTUP_SIREN_TEST_DURATION)
 
             elif key == ord("a"):
 
