@@ -1,38 +1,58 @@
-# Smart CCTV — Face Recognition Security System
+# 📷 Smart CCTV — Face Recognition Security System
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Python-3.8%2B-3776AB.svg?logo=python&logoColor=white" alt="Python 3.8+">
+  <img src="https://img.shields.io/badge/Python-3.12%2B-3776AB.svg?logo=python&logoColor=white" alt="Python 3.12+">
   <img src="https://img.shields.io/badge/OpenCV-5.x-5C3EE8.svg?logo=opencv&logoColor=white" alt="OpenCV">
-  <img src="https://img.shields.io/badge/Face_Recognition-1.3-00A4EF.svg" alt="face_recognition 1.3">
-  <img src="https://img.shields.io/badge/Ultralytics-YOLOv8n-111F68.svg" alt="Ultralytics YOLOv8n">
+  <img src="https://img.shields.io/badge/Tests-32%20passing-brightgreen.svg" alt="32 tests passing">
+  <img src="https://img.shields.io/badge/Platform-PC%20%7C%20Raspberry%20Pi%205%20%7C%20ESP32--CAM-orange.svg" alt="Platforms">
   <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="MIT License">
 </p>
 
-Real-time facial recognition surveillance: identify family members, detect intruders, and trigger alarms — using nothing more than a webcam.
+<p align="center">
+  <b>Real-time facial recognition surveillance using nothing more than a webcam.</b><br>
+  Identify family members 👪 · Detect intruders 🚨 · Trigger alarms 🔊 · All in Nepal Time 🇳🇵
+</p>
 
 ---
 
-## Table of Contents
+## ✨ Highlights
 
-- [Overview](#overview)
-- [Features](#features)
-- [Requirements](#requirements)
-- [Quick Start](#quick-start)
-- [Family Registration](#family-registration)
-- [Running the System](#running-the-system)
-- [Night Mode](#night-mode)
-- [Animal Detection](#animal-detection)
-- [System Architecture](#system-architecture)
-- [Project Structure](#project-structure)
-- [Configuration Reference](#configuration-reference)
-- [Database Schema](#database-schema)
-- [Keyboard Controls](#keyboard-controls)
-- [Troubleshooting](#troubleshooting)
-- [License](#license)
+| | |
+| --- | --- |
+| 👪 **Knows your family** | Guided registration learns faces; names appear in green with confidence % |
+| 🚨 **Catches strangers** | Red `UNKNOWN PERSON DETECTED` banner, countdown, snapshots, loud siren |
+| 🇳🇵 **Nepal Time aware** | Day mode (2-min siren) and Night Security mode from 10 PM (5-min siren) |
+| 🐾 **No false alarms** | YOLOv8 suppresses the siren when only animals are in view |
+| ⚡ **Runs anywhere** | Three performance profiles: from 2-core/4 GB boxes up to GPU machines |
+| 🔌 **Future-ready** | Hardware abstraction for Raspberry Pi 5 and ESP32-CAM |
+| 🎞️ **Smooth video** | Motion gate + 1-frame camera queue — never freezes, never lags |
 
 ---
 
-## Overview
+## 📖 Table of Contents
+
+- [Overview](#-overview)
+- [How It Works](#-how-it-works)
+- [Features](#-features)
+- [Security Modes & Siren](#-security-modes--siren-nepal-time)
+- [Requirements](#-requirements)
+- [Quick Start](#-quick-start)
+- [Family Registration](#-family-registration)
+- [Running the System](#-running-the-system)
+- [Animal Detection](#-animal-detection)
+- [Performance Profiles](#-performance-profiles)
+- [Hardware Compatibility](#-hardware-compatibility)
+- [System Architecture](#-system-architecture)
+- [Project Structure](#-project-structure)
+- [Configuration Reference](#-configuration-reference)
+- [Database Schema](#-database-schema)
+- [Keyboard Controls](#-keyboard-controls)
+- [Troubleshooting](#-troubleshooting)
+- [License](#-license)
+
+---
+
+## 🔍 Overview
 
 Smart CCTV turns a webcam into an intelligent security system. It:
 
@@ -41,24 +61,48 @@ Smart CCTV turns a webcam into an intelligent security system. It:
 - **Recognizes** registered individuals and logs their presence
 - **Detects** unknown people, saves snapshots, and sounds an audible siren
 - **Suppresses false alarms** caused by animals using YOLOv8 object detection
-- **Adapts** its behavior based on time of day, with faster alerts at night
+- **Switches to Night Security mode automatically at 10 PM** Nepal Time
 
 All events are logged to a SQLite database (`logs/events.db`) and a text log file (`logs/security.log`) for review.
 
-> **New to the codebase?** Read [ARCHITECTURE.md](ARCHITECTURE.md) for a narrative walkthrough of every module, the life of a frame, and where to look when something goes wrong.
+> 📘 **New to the codebase?** Read [ARCHITECTURE.md](ARCHITECTURE.md) for a narrative walkthrough of every module, the life of a frame, and where to look when something goes wrong.
 
 ---
 
-## Features
+## 🔄 How It Works
+
+Every camera frame walks through the pipeline, **cheapest checks first**, so a quiet scene costs almost nothing:
+
+```mermaid
+flowchart TD
+    A["📷 Camera frame"] --> B{"🚶 Motion detected?"}
+    B -- "No" --> Z["🖥️ Display frame<br/>(skip heavy work — video never freezes)"]
+    B -- "Yes" --> C["✨ Enhance<br/>auto-gamma + CLAHE"]
+    C --> D["🔍 Detect faces<br/>HOG on downscaled frame"]
+    D --> E["🧬 Encode face<br/>128-d signature"]
+    E --> F{"🆔 Match family DB?<br/>distance ≤ 0.45"}
+    F -- "Yes" --> G["👪 FAMILY<br/>green box + name + confidence"]
+    F -- "No" --> H["⚠️ UNKNOWN<br/>red box + banner"]
+    H --> I{"🐾 YOLO scene check"}
+    I -- "animal only" --> J["😌 Suppress siren"]
+    I -- "human / none" --> K["⏱️ Countdown<br/>10s day · 2s night"]
+    K --> L["🚨 SIREN<br/>2 min day · 5 min night"]
+    G --> M["📝 Log sighting"]
+    L --> N["📸 Snapshot + SQLite event"]
+```
+
+---
+
+## 🧩 Features
 
 ### Face Detection
 
 | Feature | Description |
 | --- | --- |
 | HOG detection | Fast real-time face detection on scaled frames |
-| CNN fallback | Deep-learning detection when HOG finds nothing |
+| CNN fallback | Deep-learning detection when HOG finds nothing (balanced/high profiles) |
 | Min face size filter | Rejects tiny false-positive detections |
-| Dual-resolution scanning | Detection at 50% scale with optional full-res CNN |
+| Dual-resolution scanning | Detection at reduced scale with optional full-res CNN |
 
 ### Image Preprocessing
 
@@ -66,7 +110,7 @@ All events are logged to a SQLite database (`logs/events.db`) and a text log fil
 | --- | --- |
 | Auto gamma correction | Brightens dark frames, dims overexposed ones |
 | CLAHE contrast enhancement | Improves face visibility in shadows and glare |
-| Bilateral denoising | Reduces noise while preserving edges |
+| Bilateral denoising | Reduces noise while preserving edges (skipped on `low` profile for speed) |
 
 ### Temporal Tracking
 
@@ -76,6 +120,14 @@ All events are logged to a SQLite database (`logs/events.db`) and a text log fil
 | Centroid track matching | Stable identity across detection gaps |
 | EMA box smoothing | Steady bounding boxes, less jitter |
 | Frame-skip detection | Full detection every N frames; tracks persist between |
+
+### Motion Gate
+
+| Technique | Benefit |
+| --- | --- |
+| Background-model differencing | Catches slow, gradual intrusion a naive diff misses |
+| Idle skip | Heavy pipeline runs only when something moves |
+| Always-on display | Frames still render while idle — the video never freezes |
 
 ### Registration (`register.py`)
 
@@ -88,7 +140,9 @@ All events are logged to a SQLite database (`logs/events.db`) and a text log fil
 ### Alarm Behavior
 
 - Looping WAV siren when an unknown person lingers past the delay
-- Automatic stop when the area is clear; manual silence with `S`
+- **Auto-shutdown** after 2 min (day) or 5 min (night) — never runs forever
+- Manual silence anytime with `S`
+- **Re-trigger cooldown** (60 s) after each stop prevents alarm loops
 - Snapshots of unknown individuals saved at configurable intervals
 - Animal-only scenes suppress the siren entirely
 
@@ -102,30 +156,64 @@ All events are logged to a SQLite database (`logs/events.db`) and a text log fil
 
 | Event | Description |
 | --- | --- |
+| `SIREN_TRIGGERED` | Siren fired (records mode + auto-stop duration) |
 | `SIREN_ON` | Siren alarm activated |
-| `SIREN_OFF` | Siren alarm deactivated |
+| `SIREN_OFF` | Siren silenced manually (`S` key) |
+| `SIREN_AUTO_OFF` | Siren auto-stopped when its duration expired |
 | `UNKNOWN_CONFIRMED` | Unknown person detected and confirmed |
 | `UNKNOWN_SNAPSHOT` | Snapshot saved of unknown person |
 | `FAMILY_SIGHTING` | Recognized family member spotted |
 
 ---
 
-## Requirements
+## 🚨 Security Modes & Siren (Nepal Time)
+
+All time-of-day logic uses **Nepal Time** (NPT, UTC+5:45) via `cctv/timeutil.py`, so the system behaves correctly no matter what timezone the host machine is set to.
+
+| Mode | 🕐 Nepal time | ⏱️ Confirm delay | 🔊 Siren duration |
+| --- | --- | --- | --- |
+| ☀️ **Day** | 06:00–22:00 | 10 s (`UNKNOWN_DELAY_SECONDS`) | **2 min** (`SIREN_DAY_DURATION`) |
+| 🌙 **Night security** | 22:00–06:00 | 2 s (`NIGHT_UNKNOWN_DELAY_SECONDS`) | **5 min** (`SIREN_NIGHT_DURATION`) |
+
+- 🌙 **Night security mode arms automatically at 10 PM** Nepal time; the display switches to **NIGHT SECURITY MODE** (amber) with a faster response and longer siren.
+- ⏳ **The siren never runs forever.** It auto-stops after the mode's duration. A family member can silence it early by pressing **`S`**.
+- 🔁 After an auto-stop, a `SIREN_RETRIGGER_COOLDOWN` (60 s) prevents an immediate re-trigger loop, giving the family time to respond.
+- 🐾 Animals still suppress the alarm (YOLO), and a confirmed human shortens the delay to `UNKNOWN_HUMAN_DELAY_SECONDS`.
+
+```mermaid
+sequenceDiagram
+    participant U as 🚶 Unknown person
+    participant M as main.py
+    participant S as 🔊 Siren
+    U->>M: lingers past the mode delay
+    M->>S: start(duration = 120s day / 300s night)
+    Note over S: alarm loops
+    alt family silences it
+        S-->>M: press S → stop()
+    else timer expires
+        S-->>S: auto-stop after duration
+    end
+    Note over M: 60s cooldown before it may re-trigger
+```
+
+---
+
+## 📦 Requirements
 
 | Dependency | Purpose |
 | --- | --- |
-| Python 3.8+ | Runtime |
-| Webcam (USB or built-in) | Video input |
+| Python 3.12+ | Runtime |
+| Webcam (USB, built-in, Pi camera, or ESP32-CAM stream) | Video input |
 | `opencv-python` | Camera capture, image processing |
 | `face_recognition` | Face detection and recognition |
 | `pygame` | Siren audio playback |
 | `numpy` | Numerical operations |
-| `ultralytics` | YOLOv8 animal/human object detection |
 | `setuptools<81` (Python 3.12+) | Provides `pkg_resources` for `face_recognition_models` |
+| `ultralytics` *(optional)* | YOLOv8 animal/human detection — only if `ANIMAL_DETECTION_ENABLED = True` |
 
 ---
 
-## Quick Start
+## 🚀 Quick Start
 
 ```bash
 # 1. Create and activate a virtual environment
@@ -152,7 +240,7 @@ python main.py
 
 ---
 
-## Family Registration
+## 👪 Family Registration
 
 Before running the main system, register the people it should recognize:
 
@@ -169,7 +257,7 @@ python register.py
 3. **Quality feedback** — green bounding box for good frames, red for rejected, with a capture progress bar
 4. **Review results** — accepted and skipped counts are shown on screen
 
-**Tips for best results**
+**💡 Tips for best results**
 
 - Use even lighting (natural daylight is ideal)
 - Look directly at the camera
@@ -177,11 +265,11 @@ python register.py
 - Keep expressions neutral
 - Register from multiple angles
 
-Photos are stored in `family/<name>/` — one folder per person.
+Photos are stored in `family/<name>/` — one folder per person. Re-run with the same name to add more photos; delete the folder to remove a person.
 
 ---
 
-## Running the System
+## ▶️ Running the System
 
 ```bash
 python main.py
@@ -195,50 +283,27 @@ SMART CCTV
 Family face samples: 20
 Recognition tolerance: 0.45
 Unknown delay: 10s
-Allowed time: 06:00 - 22:00
+Security modes (Nepal time): day siren 120s, night mode from 22:00 siren 300s
+Camera: hardware=pc camera_index=0 resolution=640x480
 --------------------------------
 ```
 
 Per frame, the system:
 
-1. **Enhances** the image (gamma, CLAHE, denoise)
-2. **Detects** faces (HOG, with CNN fallback)
-3. **Recognizes** faces against known encodings
-4. **Tracks** identities with majority vote and smoothed boxes
-5. **Logs** family sightings (rate-limited)
-6. **Tracks** unknown individuals with a countdown timer
-7. **Saves** snapshots of unknown people
+1. **Gates** on motion (cheap background-model check)
+2. **Enhances** the image (gamma, CLAHE, optional denoise)
+3. **Detects** faces (HOG, with CNN fallback on higher profiles)
+4. **Recognizes** faces against known encodings
+5. **Tracks** identities with majority vote and smoothed boxes
+6. **Logs** family sightings (rate-limited)
+7. **Counts down** unknown individuals and **saves** snapshots
 8. **Triggers** the siren if an unknown person stays too long
 
-On-screen display: green boxes for family, red boxes for unknown, status overlay.
+**On-screen display:** green boxes + names for family, red boxes + `UNKNOWN PERSON DETECTED` banner for strangers, mode indicator, system status, and a live FPS counter.
 
 ---
 
-## Security Modes & Siren (Nepal Time)
-
-All time-of-day logic uses **Nepal Time** (NPT, UTC+5:45) via
-`cctv/timeutil.py`, so the system behaves correctly no matter what
-timezone the host machine is set to.
-
-| Mode | Nepal time | Confirm delay | Siren duration |
-| --- | --- | --- | --- |
-| Day | 06:00-22:00 | 10s (`UNKNOWN_DELAY_SECONDS`) | 2 min (`SIREN_DAY_DURATION`) |
-| Night security | 22:00-06:00 | 2s (`NIGHT_UNKNOWN_DELAY_SECONDS`) | 5 min (`SIREN_NIGHT_DURATION`) |
-
-- **Night security mode arms automatically at 10 PM** Nepal time; the
-  display switches to **NIGHT SECURITY MODE** (amber text) and the
-  response becomes faster with a longer siren.
-- **The siren never runs forever.** Once triggered it auto-stops after
-  the mode's duration (2 min day / 5 min night). A family member can
-  silence it early by pressing **`s`** in the window.
-- After an auto-stop, a `SIREN_RETRIGGER_COOLDOWN` (60s) prevents an
-  immediate re-trigger loop, giving the family time to respond.
-- Animals still suppress the alarm (YOLO), and a confirmed human
-  shortens the delay to `UNKNOWN_HUMAN_DELAY_SECONDS`.
-
----
-
-## Animal Detection
+## 🐾 Animal Detection
 
 A YOLOv8n model (weights downloaded separately, see Quick Start) classifies the scene while an unknown face lingers:
 
@@ -250,47 +315,82 @@ To save CPU, YOLO runs only every `YOLO_SKIP_FRAMES` frames and only while an un
 
 ---
 
-## System Architecture
+## ⚡ Performance Profiles
 
-```
-Camera (720p)
-    |
-    v
-Image Enhancement          gamma -> CLAHE -> bilateral denoise
-    |
-    v
-Face Detection             HOG @ 50% scale, CNN fallback full-res
-    |
-    v
-Face Encoding              128-dimensional vector per face
-    |
-    v
-Recognition                face_distance() vs known encodings
-    |                      distance <= 0.45 -> FAMILY
-    |                      distance >  0.45 -> UNKNOWN
-    +------------------+------------------+
-    |                                     |
-    v                                     v
-FAMILY                                UNKNOWN
-Log sighting (rate-limited)           confirm over N frames
-Draw green box                        countdown timer
-                                      snapshots every 5s
-                                      YOLO check: animal -> suppress
-                                      siren after delay
+Set `PERFORMANCE_MODE` in `config.py` to match your hardware. The same pipeline runs in all three modes — only the tunables change, so **no feature is ever removed**.
+
+| Mode | 🖥️ Target hardware | 📐 Resolution | 🔍 Detection | ✨ Denoise | 🧠 CNN fallback | 🐾 YOLO |
+| --- | --- | --- | --- | --- | --- | --- |
+| 🐢 `low` | ~4 GB RAM, 2-core CPU, Raspberry Pi, old laptops | 640×480 | every 4th frame, 0.4 scale | off | off | off |
+| 🚶 `balanced` | Typical laptops/desktops (4–8 cores) | 1280×720 | every 2nd frame, 0.5 scale | on | off | on |
+| 🚀 `high` | Strong multi-core machines, ideally with a GPU | 1920×1080 | every frame, 0.5 scale | on | on | on |
+
+**Smooth-video guarantees in all modes:**
+
+- 🎞️ **No frozen frames** — the motion gate skips heavy processing but still displays every camera frame, so the window never freezes when idle.
+- ⏱️ **No display lag** — the camera driver queue is capped at one frame (`CAP_PROP_BUFFERSIZE = 1`), so the view stays in real time.
+- 📊 **Live FPS counter** — top-right corner (toggle with `SHOW_FPS`); green at 15+ FPS, amber 8–15, red below 8.
+
+On a low-end box, start with `low`. If the FPS counter stays green and you want more accuracy, step up to `balanced`.
+
+---
+
+## 🔌 Hardware Compatibility
+
+The system is built to move to smaller boards. All device-specific code lives behind `cctv/hardware.py`, selected by `HARDWARE_PROFILE` in `config.py`:
+
+| Profile | Device | Camera | Notes |
+| --- | --- | --- | --- |
+| 💻 `pc` | Desktop/laptop (default) | Local webcam | Current target |
+| 🍓 `pi` | Raspberry Pi 5 | Pi camera / USB cam | Same stack; GPIO relay hook point for an external siren |
+| 📡 `esp32` | ESP32-CAM | MJPEG/RTSP stream | Board only captures; the face pipeline runs on a host machine |
+
+For an **ESP32-CAM**, set `CAMERA_INDEX` to the board's stream URL (e.g. `http://192.168.1.50:81/stream`) — OpenCV decodes it like a local camera. Pair `PERFORMANCE_MODE = "low"` with these boards.
+
+---
+
+## 🏗️ System Architecture
+
+```mermaid
+flowchart LR
+    subgraph INPUT
+        CAM["📷 Camera<br/>(hardware.py)"]
+    end
+    subgraph PIPELINE["cctv/ package"]
+        MOT["motion.py<br/>🚶 motion gate"]
+        ENH["enhance.py<br/>✨ preprocess"]
+        FAC["faces.py<br/>🔍 detect + recognize"]
+        TRK["tracking.py<br/>🎯 smooth + vote"]
+        YOL["yolo.py<br/>🐾 scene analysis"]
+    end
+    subgraph OUTPUT
+        HUD["hud.py<br/>🖥️ overlays"]
+        SIR["siren.py<br/>🔊 alarm + auto-stop"]
+        STO["storage.py<br/>📝 SQLite + log"]
+    end
+    CLK["timeutil.py<br/>🇳🇵 Nepal Time"] -.-> SIR
+    CLK -.-> MOT
+    CAM --> MOT --> ENH --> FAC --> TRK
+    TRK --> HUD
+    TRK --> SIR
+    TRK --> YOL
+    SIR --> STO
+    TRK --> STO
 ```
 
 All pipeline stages are separate modules in the `cctv/` package; `main.py` is a thin orchestrator that wires them together.
 
 ---
 
-## Project Structure
+## 📁 Project Structure
 
 ```
 .
-├── config.py           # All configurable settings and thresholds
+├── config.py           # All configurable settings, profiles, and thresholds
 ├── main.py             # Thin orchestrator: wires the cctv/ modules into the loop
 ├── register.py         # Family member registration tool
-├── requirements.txt    # Python dependencies
+├── requirements.txt    # Python dependencies (CPU-frugal core set)
+├── ARCHITECTURE.md     # Narrative code walkthrough
 ├── LICENSE             # MIT license
 ├── README.md           # This file
 ├── .gitignore          # Git ignore rules
@@ -300,10 +400,16 @@ All pipeline stages are separate modules in the `cctv/` package; `main.py` is a 
 │   ├── enhance.py      # Frame preprocessing (gamma, CLAHE, denoise)
 │   ├── faces.py        # Face detection, encoding, recognition
 │   ├── tracking.py     # Temporal tracking and majority-vote identity
-│   ├── siren.py        # Siren audio control
+│   ├── motion.py       # Background-model motion gate
 │   ├── yolo.py         # YOLOv8 animal/human detection (alarm suppression)
+│   ├── siren.py        # Siren audio control + auto-stop timer
+│   ├── storage.py      # SQLite + file event logging + retention
 │   ├── quality.py      # Registration quality checks (blur, brightness, dupes)
-│   └── storage.py      # SQLite + file event logging
+│   ├── hud.py          # All on-screen overlay drawing
+│   ├── timeutil.py     # Nepal Time clock + day/night security mode
+│   └── hardware.py     # Device abstraction (pc / pi / esp32)
+│
+├── tests/              # Unit tests (32 tests, no camera/audio needed)
 │
 ├── family/             # Registered family photos (one folder per person)
 │   └── <name>/
@@ -324,33 +430,7 @@ All pipeline stages are separate modules in the `cctv/` package; `main.py` is a 
 
 ---
 
-## Performance Profiles
-
-Set `PERFORMANCE_MODE` in `config.py` to match your hardware. The same
-pipeline runs in all three modes — only the tunables change, so no feature
-is ever removed.
-
-| Mode | Target hardware | Resolution | Detection | Denoise | CNN fallback | YOLO |
-| --- | --- | --- | --- | --- | --- | --- |
-| `low` | ~4 GB RAM, 2-core CPU, Raspberry Pi, old laptops | 640x480 | every 4th frame, 0.4 scale | off | off | off |
-| `balanced` | Typical laptops/desktops (4-8 cores) | 1280x720 | every 2nd frame, 0.5 scale | on | off | on |
-| `high` | Strong multi-core machines, ideally with a GPU | 1920x1080 | every frame, 0.5 scale | on | on | on |
-
-Smooth-video fixes applied in all modes:
-
-- **No frozen frames** — the motion gate skips heavy processing but still
-  displays every camera frame, so the window never freezes when idle.
-- **No display lag** — the camera driver queue is capped at one frame
-  (`CAP_PROP_BUFFERSIZE = 1`), so the view stays in real time.
-- **Live FPS counter** — top-right corner (toggle with `SHOW_FPS`); green
-  at 15+ FPS, amber 8-15, red below 8.
-
-On a low-end box, start with `low`. If the FPS counter stays green and you
-want more accuracy, step up to `balanced`.
-
----
-
-## Configuration Reference
+## ⚙️ Configuration Reference
 
 All tunable parameters live in `config.py`.
 
@@ -434,7 +514,7 @@ All tunable parameters live in `config.py`.
 
 ---
 
-## Database Schema
+## 🗄️ Database Schema
 
 **File:** `logs/events.db`
 
@@ -456,7 +536,7 @@ sqlite3 logs/events.db "SELECT * FROM events ORDER BY id DESC LIMIT 10;"
 
 ---
 
-## Keyboard Controls
+## ⌨️ Keyboard Controls
 
 | Key | Function |
 | --- | --- |
@@ -465,7 +545,7 @@ sqlite3 logs/events.db "SELECT * FROM events ORDER BY id DESC LIMIT 10;"
 
 ---
 
-## Troubleshooting
+## 🛠️ Troubleshooting
 
 ### "Import could not be resolved" (Pylance)
 
@@ -485,7 +565,7 @@ This restores the `pkg_resources` module needed by the older `face_recognition_m
 ### Siren not working
 
 - Ensure a WAV file exists at the path in `SIREN_FILE` (default: `sounds/siren.wav`)
-- The system runs without a siren — it simply skips audio playback
+- The system runs without a siren — it simply skips audio playback (no audio device is handled gracefully)
 
 ### Camera not opening
 
@@ -498,14 +578,14 @@ This restores the `pkg_resources` module needed by the older `face_recognition_m
 - Improve lighting during registration and monitoring
 - Lower `FACE_TOLERANCE` for stricter matching (try 0.4)
 - Ensure photos contain exactly one face each
-- CNN fallback can help with difficult angles
+- CNN fallback can help with difficult angles (balanced/high profiles)
 
 ### YOLO warning at startup
 
-If `ultralytics` is missing or `yolov8n.pt` cannot be loaded, animal suppression is disabled automatically and the system continues with face recognition only. Reinstall with `pip install -r requirements.txt` to restore it.
+If `ultralytics` is missing or `yolov8n.pt` cannot be loaded, animal suppression is disabled automatically and the system continues with face recognition only. Install `ultralytics` and download the weights (see Quick Start) to restore it.
 
 ---
 
-## License
+## 📄 License
 
 This project is open source and available under the [MIT License](LICENSE).
