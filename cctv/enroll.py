@@ -281,10 +281,13 @@ def run_capture(camera, safe_name: str) -> int:
                     status, status_color = "Hold still (blurry)", _AMBER
                 else:
                     face_roi = rgb[top:bottom, left:right]
-                    enc = (
-                        compute_encoding(face_roi)
-                        if face_roi.size > 0 else None
-                    )
+                    try:
+                        enc = (
+                            compute_encoding(face_roi)
+                            if face_roi.size > 0 else None
+                        )
+                    except Exception:
+                        enc = None
                     if enc is None:
                         status, status_color = "Face not clear, adjust", _AMBER
                     elif is_duplicate_pose(

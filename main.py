@@ -216,7 +216,11 @@ def main():
         unknown_count = 0
         unknown_start = None
 
-        enrolled = run_enrollment(camera)
+        try:
+            enrolled = run_enrollment(camera)
+        except Exception as err:
+            print(f"[ENROLL] Error during enrollment: {err}")
+            enrolled = False
 
         if enrolled:
             # Pick up the new photos immediately without a restart

@@ -36,12 +36,32 @@ def face_large_enough(face_height: int) -> bool:
 
 
 def compute_encoding(rgb_face: np.ndarray):
-    """Return 128-d encoding or None if no face is visible."""
-    locs = face_recognition.face_locations(rgb_face, model="hog")
-    if len(locs) != 1:
+    """Return 128-d encoding or None if no face is visible.
+
+    A tight face crop can cause dlib's landmark detector to produce
+    points outside the image bounds, crashing compute_face_descriptor.
+    We pad the crop with replicated border pixels to give dlib room.
+    """
+    h, w = rgb_face.shape[:2]
+    if h < 10 or w < 10:
         return None
-    encs = face_recognition.face_encodings(rgb_face, locs)
-    return encs[0] if encs else None
+
+    # Pad 25% on each side to prevent landmark overflow on tight crops
+    pad_y = max(h // 4, 10)
+    pad_x = max(w // 4, 10)
+    padded = cv2.copyMakeBorder(
+        rgb_face, pad_y, pad_y, pad_x, pad_x,
+        cv2.BORDER_REPLICATE
+    )
+
+    try:
+        locs = face_recognition.face_locations(padded, model="hog")
+        if len(locs) != 1:
+            return None
+        encs = face_recognition.face_encodings(padded, locs)
+        return encs[0] if encs else None
+    except Exception:
+        return None
 
 
 def load_existing_encodings(folder: str) -> list:
