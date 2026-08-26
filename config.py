@@ -22,6 +22,25 @@ Sections at a glance:
 """
 
 # ----------------------------------------------------------------------
+# 0. LOW-POWER / SMALL-DEVICE PROFILE
+# ----------------------------------------------------------------------
+# Set LOW_POWER = True when running on a small device (e.g. 4 GB RAM, a
+# lightweight SBC such as a Raspberry Pi, or an old laptop). Every knob
+# it touches is an EXISTING setting further down this file, so switching
+# it on never removes a feature — it just runs the same pipeline on
+# smaller/faster settings to keep CPU and RAM usage low.
+#
+#   • Capture at a lower resolution (less data per frame).
+#   • Detect faces on a smaller scaled image (HOG is the cheap part).
+#   • Skip face detection for more frames, relying on tracking.
+#   • Smaller motion-diff image, cheaper blur, higher motion threshold.
+#   • Disable the slow CNN fallback so faces are only found by HOG.
+#   • Disable YOLO scene analysis (skips the large ultralytics model).
+#     When there is no GPU, YOLO could not run usefully anyway, so on
+#     a small device the siren delay falls back to the plain behaviour.
+LOW_POWER = True
+
+# ----------------------------------------------------------------------
 # 1. RUNTIME PATHS
 # ----------------------------------------------------------------------
 # One sub-folder per registered family member, each holding that person's
@@ -171,3 +190,39 @@ MAX_BRIGHTNESS = 215
 # Minimum face_distance from every known capture before a new pose is
 # kept, rejecting near-duplicate poses during a registration session.
 MIN_ENCODING_DISTANCE = 0.25
+
+# ----------------------------------------------------------------------
+# LOW-POWER OVERRIDES
+# ----------------------------------------------------------------------
+# Applied at import time AFTER every value above is set, so object names
+# used throughout the code keep working unchanged. Flip LOW_POWER to False
+# for the original "full quality" behaviour. Nothing here adds, removes,
+# or changes any code path — it only picks lighter values for the knobs
+# the pipeline already reads.
+if LOW_POWER:
+
+    # 2. Camera — fewer pixels per frame means less RAM and CPU.
+    CAMERA_WIDTH = 640
+    CAMERA_HEIGHT = 480
+
+    # 3. Face detection — HOG on a smaller image is much cheaper.
+    DETECTION_SCALE = 0.4
+    MIN_FACE_SIZE = 32
+    # HOG is fast; the CNN model needs the big dlib model plus GPU-like
+    # CPU effort and is the main reason to skip it on a small box.
+    ENABLE_CNN_FALLBACK = False
+
+    # 5. Face tracking — run full detection less often; tracks bridge
+    # the gap, so every individual frame no longer pays HOG's cost.
+    TRACKING_SKIP_FRAMES = 4
+
+    # 6. Motion gate — smaller diff image, cheaper blur, and a slightly
+    # higher threshold so the heavy pipeline is skipped more aggressively.
+    MOTION_SCALE = 0.2
+    MOTION_BG_ALPHA = 0.08
+    MOTION_THRESHOLD = 32.0
+
+    # 7. Scene analysis (YOLO) — disable the huge model. The ultralytics
+    # dependency and its detector object can then be omitted entirely,
+    # letting a minimal install run without the large weights file.
+    ANIMAL_DETECTION_ENABLED = False

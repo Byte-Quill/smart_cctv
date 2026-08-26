@@ -1,6 +1,17 @@
+# Required for the core Smart CCTV pipeline (faces + motion + siren + HUD).
+# This is a CPU-frugal set: no GPU/CUDA packages, no torch, no ultralytics.
 opencv-python
 face_recognition
 pygame
 numpy
-ultralytics
-setuptools<81
+setuptools<81  # needed by pygame for pkg_resources until it migrates
+
+# ----------------------------------------------------------------------
+# OPTIONAL — YOLO animal/human scene analysis (false-alarm suppression).
+# ----------------------------------------------------------------------
+# Only needed if you keep ANIMAL_DETECTION_ENABLED = True in config.py.
+# Installing it pulls in torch (+ ~2-3 GB) and needs yolov8n.pt. On a small
+# device with 4 GB RAM and no NVIDIA GPU it is usually not worth it — leave
+# ANIMAL_DETECTION_ENABLED = False and install just the core set above.
+#
+#   ultralytics
