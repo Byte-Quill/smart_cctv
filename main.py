@@ -169,7 +169,6 @@ def main():
 
     last_snapshot = 0
     last_sighting = {}  # person -> timestamp of last FAMILY_SIGHTING log
-    last_siren_trigger = 0  # re-trigger cooldown anchor for the siren
 
     tracked_faces = {}
     frame_counter = 0
@@ -250,10 +249,11 @@ def main():
                 rgb_frame = None
 
             # Full-resolution frame for CNN fallback. Only converted when the
-            # fallback is enabled — otherwise this is wasted work every frame.
+            # fallback is enabled AND something is moving — otherwise this is
+            # wasted work on every idle frame.
             rgb_full = (
                 cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                if ENABLE_CNN_FALLBACK else None
+                if (ENABLE_CNN_FALLBACK and has_motion) else None
             )
 
             # Find all faces and their encodings in this frame.
@@ -277,10 +277,13 @@ def main():
                 )
                 raw_faces.append((location, name, confidence))
 
-            # Update tracks with smoothing and frame-skip
-            tracked_faces = match_tracks(
-                raw_faces, tracked_faces, frame_counter
-            )
+            # Update tracks with smoothing and frame-skip. Skip the call
+            # entirely when there is nothing to match and no live tracks —
+            # a pure no-op on idle frames.
+            if raw_faces or tracked_faces:
+                tracked_faces = match_tracks(
+                    raw_faces, tracked_faces, frame_counter
+                )
 
             # Build final classification from majority vote
             recognized_people = []
@@ -424,8 +427,12 @@ def main():
 
                     animal_only = animal_seen and not human_seen
 
+                    # Cooldown is anchored to when the siren last STOPPED
+                    # (not when it was triggered), so it cannot restart the
+                    # instant a run finishes. 0.0 = never stopped = ready.
                     cooled_down = (
-                        time.time() - last_siren_trigger
+                        siren.last_stop == 0.0
+                        or time.time() - siren.last_stop
                         >= SIREN_RETRIGGER_COOLDOWN
                     )
 
@@ -438,7 +445,6 @@ def main():
 
                         duration = siren_duration()
                         siren.start(duration=duration)
-                        last_siren_trigger = time.time()
 
                         log_event(
                             "SIREN_TRIGGERED",

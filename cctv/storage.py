@@ -13,14 +13,22 @@ from config import LOG_DIR, SNAPSHOT_DIR, RETENTION_DAYS
 os.makedirs(LOG_DIR, exist_ok=True)
 
 
-# Set up file logging for security events
-logging.basicConfig(
-    filename=os.path.join(LOG_DIR, "security.log"),
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)s | %(message)s"
-)
-
+# Set up file logging for security events.
+# NOTE: logging.basicConfig() is a no-op if anything else configured the
+# root logger first, which would silently drop our audit log. Attach an
+# explicit FileHandler to our own logger instead — idempotent and robust.
 logger = logging.getLogger("SmartCCTV")
+logger.setLevel(logging.INFO)
+if not logger.handlers:
+    _file_handler = logging.FileHandler(
+        os.path.join(LOG_DIR, "security.log")
+    )
+    _file_handler.setFormatter(
+        logging.Formatter("%(asctime)s | %(levelname)s | %(message)s")
+    )
+    logger.addHandler(_file_handler)
+    # Keep the audit trail out of the console; main.py prints its own UI.
+    logger.propagate = False
 
 
 # SQLite database that stores all events

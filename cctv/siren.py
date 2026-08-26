@@ -10,6 +10,7 @@ value: 2 minutes in daytime, 5 minutes in night security mode).
 """
 
 import threading
+import time
 
 import pygame
 
@@ -53,6 +54,10 @@ class Siren:
         self.active = False
         self._lock = threading.Lock()
         self._auto_stop_timer: threading.Timer | None = None
+        # Timestamp of the most recent stop (auto or manual). main.py uses
+        # this to anchor the re-trigger cooldown so the alarm cannot restart
+        # the instant it finishes. 0.0 = never stopped.
+        self._last_stop = 0.0
 
         if self.mixer_ok:
             try:
@@ -115,7 +120,14 @@ class Siren:
             self._stop_sound_locked()
             self.active = False
             self._auto_stop_timer = None
+            self._last_stop = time.time()
             log_event("SIREN_AUTO_OFF")
+
+    @property
+    def last_stop(self) -> float:
+        """Timestamp of the most recent stop; 0.0 if never stopped."""
+        with self._lock:
+            return self._last_stop
 
     @property
     def is_active(self) -> bool:
@@ -142,6 +154,8 @@ class Siren:
         if self._auto_stop_timer is not None:
             self._auto_stop_timer.cancel()
             self._auto_stop_timer = None
+
+        self._last_stop = time.time()
 
         logger.info("SIREN STOPPED")
 
