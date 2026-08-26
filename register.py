@@ -1,4 +1,33 @@
-"""Family member registration: guided auto-capture of quality face photos."""
+"""Family member registration: guided auto-capture of quality face photos.
+
+This is how the system learns who belongs in the house. Run it, type a
+name, and sit in front of the camera — it captures a set of photos that
+main.py later loads as that person's reference encodings.
+
+How it works
+------------
+1. You enter a name. A folder ``family/<Name>/`` is created to hold that
+   person's photos (one folder per person = one identity).
+2. The camera opens and watches for a face. A photo is only saved when it
+   passes every quality gate in cctv/quality.py:
+       - face large enough      (MIN_REG_FACE_SIZE)
+       - good lighting          (MIN_BRIGHTNESS..MAX_BRIGHTNESS)
+       - sharp, not blurry      (BLUR_THRESHOLD)
+       - a new pose             (MIN_ENCODING_DISTANCE from prior shots)
+3. Captures happen automatically after a few stable frames; you just hold
+   still and vary your angle slightly between shots.
+4. After TARGET_PHOTOS captures (or pressing Q), the session ends.
+
+Why quality matters
+-------------------
+Recognition in main.py compares live faces against these photos. Ten
+sharp, varied poses give a robust identity; blurry or duplicate shots
+weaken it. That is why this tool rejects bad frames instead of saving
+them.
+
+Re-running with the same name adds more photos to the existing folder.
+Delete the folder to remove a person.
+"""
 
 import os
 import time

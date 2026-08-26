@@ -45,6 +45,8 @@ Smart CCTV turns a webcam into an intelligent security system. It:
 
 All events are logged to a SQLite database (`logs/events.db`) and a text log file (`logs/security.log`) for review.
 
+> **New to the codebase?** Read [ARCHITECTURE.md](ARCHITECTURE.md) for a narrative walkthrough of every module, the life of a frame, and where to look when something goes wrong.
+
 ---
 
 ## Features

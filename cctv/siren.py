@@ -18,19 +18,35 @@ class Siren:
     """
 
     def __init__(self, sound_file: str = SIREN_FILE):
-        pygame.mixer.init()
+        # A headless box or a machine with no sound card makes
+        # pygame.mixer.init() raise. The alarm must never take the whole
+        # camera loop down with it, so audio is best-effort: if it cannot
+        # be initialised the siren still tracks state and logs events, it
+        # just stays silent.
+        self.mixer_ok = False
+        try:
+            pygame.mixer.init()
+            self.mixer_ok = True
+        except Exception as error:
+            print("\nWARNING: No audio device — siren will be silent:")
+            print(error)
+            logger.warning(
+                "Audio unavailable, siren silent: %s", error
+            )
+
         self.sound = None
         self.active = False
         self._lock = threading.Lock()
 
-        try:
-            self.sound = pygame.mixer.Sound(sound_file)
-        except Exception as error:
-            print("\nWARNING: Could not load siren:")
-            print(error)
-            logger.warning(
-                "Siren could not be loaded: %s", error
-            )
+        if self.mixer_ok:
+            try:
+                self.sound = pygame.mixer.Sound(sound_file)
+            except Exception as error:
+                print("\nWARNING: Could not load siren:")
+                print(error)
+                logger.warning(
+                    "Siren could not be loaded: %s", error
+                )
 
     # Turn the siren on (loops forever until stopped)
     def start(self):

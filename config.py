@@ -39,6 +39,13 @@ Sections at a glance:
 #                YOLO allowed.
 PERFORMANCE_MODE = "low"
 
+# Fail loudly on a typo instead of silently running with default values.
+if PERFORMANCE_MODE not in ("low", "balanced", "high"):
+    raise ValueError(
+        f"PERFORMANCE_MODE must be 'low', 'balanced', or 'high', "
+        f"got {PERFORMANCE_MODE!r}"
+    )
+
 # Back-compat flag: True when running the lightest profile.
 LOW_POWER = PERFORMANCE_MODE == "low"
 

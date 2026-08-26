@@ -34,10 +34,17 @@ _db_lock = threading.Lock()
 
 
 def _get_connection() -> sqlite3.Connection:
-    """Return the shared connection, creating it on first use."""
+    """Return the shared connection, creating it on first use.
+
+    ``check_same_thread=False`` is safe here because every access is
+    serialized under ``_db_lock`` — without it, a log_event() call from a
+    worker thread would raise a ProgrammingError.
+    """
     global _connection
     if _connection is None:
-        _connection = sqlite3.connect(DATABASE)
+        _connection = sqlite3.connect(
+            DATABASE, check_same_thread=False
+        )
     return _connection
 
 
