@@ -133,10 +133,14 @@ source .venv/bin/activate
 # 2. Install dependencies
 pip install -r requirements.txt
 
-# 3. Register a family member
+# 3. (Optional) YOLO animal suppression - only if ANIMAL_DETECTION_ENABLED = True
+pip install ultralytics
+wget https://github.com/ultralytics/assets/releases/download/v8.3.0/yolov8n.pt
+
+# 4. Register a family member
 python register.py
 
-# 4. Run the system
+# 5. Run the system
 python main.py
 ```
 
@@ -228,7 +232,7 @@ This provides rapid response during nighttime hours when intrusions are most lik
 
 ## Animal Detection
 
-A bundled YOLOv8n model classifies the scene while an unknown face lingers:
+A YOLOv8n model (weights downloaded separately, see Quick Start) classifies the scene while an unknown face lingers:
 
 - **Animal-only scene** (and no human) — the siren is suppressed
 - **Human confirmed** — the alarm delay shortens to `UNKNOWN_HUMAN_DELAY_SECONDS` (1s)
@@ -282,7 +286,6 @@ All pipeline stages are separate modules in the `cctv/` package; `main.py` is a 
 ├── LICENSE             # MIT license
 ├── README.md           # This file
 ├── .gitignore          # Git ignore rules
-├── yolov8n.pt          # Bundled YOLOv8n weights (animal/human detection)
 │
 ├── cctv/               # Modular pipeline components
 │   ├── __init__.py

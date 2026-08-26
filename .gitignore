@@ -25,3 +25,9 @@ logs/
 # Environment / local config
 .env
 .env.*
+
+# Large model weights — download separately (see README), keeps repo small
+yolov8n.pt
+*.pt
+*.onnx
+*.tflite
