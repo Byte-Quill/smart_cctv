@@ -22,23 +22,25 @@ Sections at a glance:
 """
 
 # ----------------------------------------------------------------------
-# 0. LOW-POWER / SMALL-DEVICE PROFILE
+# 0. PERFORMANCE PROFILE (low / balanced / high)
 # ----------------------------------------------------------------------
-# Set LOW_POWER = True when running on a small device (e.g. 4 GB RAM, a
-# lightweight SBC such as a Raspberry Pi, or an old laptop). Every knob
-# it touches is an EXISTING setting further down this file, so switching
-# it on never removes a feature — it just runs the same pipeline on
-# smaller/faster settings to keep CPU and RAM usage low.
+# Pick the profile that matches your hardware. Every knob it touches is
+# an EXISTING setting further down this file, so switching profiles never
+# removes a feature — it just runs the same pipeline on lighter or
+# heavier settings.
 #
-#   • Capture at a lower resolution (less data per frame).
-#   • Detect faces on a smaller scaled image (HOG is the cheap part).
-#   • Skip face detection for more frames, relying on tracking.
-#   • Smaller motion-diff image, cheaper blur, higher motion threshold.
-#   • Disable the slow CNN fallback so faces are only found by HOG.
-#   • Disable YOLO scene analysis (skips the large ultralytics model).
-#     When there is no GPU, YOLO could not run usefully anyway, so on
-#     a small device the siren delay falls back to the plain behaviour.
-LOW_POWER = True
+#   "low"      — small devices: ~4 GB RAM, 2-core CPU, Raspberry Pi,
+#                old laptops. Smallest frames, cheapest detection, no
+#                denoise, YOLO off. Smooth video is the priority.
+#   "balanced" — typical laptops/desktops (4-8 cores). Default quality
+#                with moderate frame-skipping.
+#   "high"     — strong multi-core machines, ideally with a GPU. Full
+#                resolution, detection every frame, CNN fallback and
+#                YOLO allowed.
+PERFORMANCE_MODE = "low"
+
+# Back-compat flag: True when running the lightest profile.
+LOW_POWER = PERFORMANCE_MODE == "low"
 
 # ----------------------------------------------------------------------
 # 1. RUNTIME PATHS
@@ -65,6 +67,17 @@ CAMERA_INDEX = 0
 # Capture resolution requested from the camera.
 CAMERA_WIDTH = 1280
 CAMERA_HEIGHT = 720
+
+# ----------------------------------------------------------------------
+# 2b. FRAME ENHANCEMENT
+# ----------------------------------------------------------------------
+# Apply the bilateral denoise step in enhance_frame(). It improves
+# recognition slightly but is the most expensive per-frame CPU step,
+# so the low profile turns it off.
+ENHANCE_DENOISE = True
+
+# Show a live FPS counter in the top-right corner of the window.
+SHOW_FPS = True
 
 # ----------------------------------------------------------------------
 # 3. FACE DETECTION
@@ -192,18 +205,22 @@ MAX_BRIGHTNESS = 215
 MIN_ENCODING_DISTANCE = 0.25
 
 # ----------------------------------------------------------------------
-# LOW-POWER OVERRIDES
+# PERFORMANCE PROFILE OVERRIDES
 # ----------------------------------------------------------------------
 # Applied at import time AFTER every value above is set, so object names
-# used throughout the code keep working unchanged. Flip LOW_POWER to False
-# for the original "full quality" behaviour. Nothing here adds, removes,
-# or changes any code path — it only picks lighter values for the knobs
-# the pipeline already reads.
-if LOW_POWER:
+# used throughout the code keep working unchanged. Set PERFORMANCE_MODE
+# at the top of this file to "low", "balanced", or "high". Nothing here
+# adds, removes, or changes any code path — it only picks values for the
+# knobs the pipeline already reads.
+if PERFORMANCE_MODE == "low":
 
     # 2. Camera — fewer pixels per frame means less RAM and CPU.
     CAMERA_WIDTH = 640
     CAMERA_HEIGHT = 480
+
+    # 2b. Enhancement — skip the expensive bilateral denoise; gamma and
+    # CLAHE are cheap LUT/lookup ops and stay on.
+    ENHANCE_DENOISE = False
 
     # 3. Face detection — HOG on a smaller image is much cheaper.
     DETECTION_SCALE = 0.4
@@ -226,3 +243,33 @@ if LOW_POWER:
     # dependency and its detector object can then be omitted entirely,
     # letting a minimal install run without the large weights file.
     ANIMAL_DETECTION_ENABLED = False
+
+elif PERFORMANCE_MODE == "balanced":
+
+    # Default-quality values with moderate frame-skipping.
+    CAMERA_WIDTH = 1280
+    CAMERA_HEIGHT = 720
+    ENHANCE_DENOISE = True
+    DETECTION_SCALE = 0.5
+    MIN_FACE_SIZE = 40
+    ENABLE_CNN_FALLBACK = False
+    TRACKING_SKIP_FRAMES = 2
+    MOTION_SCALE = 0.25
+    MOTION_BG_ALPHA = 0.05
+    MOTION_THRESHOLD = 25.0
+    ANIMAL_DETECTION_ENABLED = True
+
+elif PERFORMANCE_MODE == "high":
+
+    # Full quality: every frame processed, CNN fallback and YOLO allowed.
+    CAMERA_WIDTH = 1920
+    CAMERA_HEIGHT = 1080
+    ENHANCE_DENOISE = True
+    DETECTION_SCALE = 0.5
+    MIN_FACE_SIZE = 40
+    ENABLE_CNN_FALLBACK = True
+    TRACKING_SKIP_FRAMES = 1
+    MOTION_SCALE = 0.25
+    MOTION_BG_ALPHA = 0.05
+    MOTION_THRESHOLD = 25.0
+    ANIMAL_DETECTION_ENABLED = True

@@ -316,6 +316,32 @@ All pipeline stages are separate modules in the `cctv/` package; `main.py` is a 
 
 ---
 
+## Performance Profiles
+
+Set `PERFORMANCE_MODE` in `config.py` to match your hardware. The same
+pipeline runs in all three modes — only the tunables change, so no feature
+is ever removed.
+
+| Mode | Target hardware | Resolution | Detection | Denoise | CNN fallback | YOLO |
+| --- | --- | --- | --- | --- | --- | --- |
+| `low` | ~4 GB RAM, 2-core CPU, Raspberry Pi, old laptops | 640x480 | every 4th frame, 0.4 scale | off | off | off |
+| `balanced` | Typical laptops/desktops (4-8 cores) | 1280x720 | every 2nd frame, 0.5 scale | on | off | on |
+| `high` | Strong multi-core machines, ideally with a GPU | 1920x1080 | every frame, 0.5 scale | on | on | on |
+
+Smooth-video fixes applied in all modes:
+
+- **No frozen frames** — the motion gate skips heavy processing but still
+  displays every camera frame, so the window never freezes when idle.
+- **No display lag** — the camera driver queue is capped at one frame
+  (`CAP_PROP_BUFFERSIZE = 1`), so the view stays in real time.
+- **Live FPS counter** — top-right corner (toggle with `SHOW_FPS`); green
+  at 15+ FPS, amber 8-15, red below 8.
+
+On a low-end box, start with `low`. If the FPS counter stays green and you
+want more accuracy, step up to `balanced`.
+
+---
+
 ## Configuration Reference
 
 All tunable parameters live in `config.py`.

@@ -3,6 +3,8 @@
 import cv2
 import numpy as np
 
+from config import ENHANCE_DENOISE
+
 
 # Reused across frames: CLAHE object and one LUT per quantized gamma level
 _CLAHE = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
@@ -39,7 +41,11 @@ def enhance_frame(frame: np.ndarray) -> np.ndarray:
     enhanced = cv2.merge([l, a, b])
     enhanced = cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
 
-    # Light denoising (bilateral filter preserves edges)
+    # Light denoising (bilateral filter preserves edges). This is the most
+    # expensive per-frame step, so the low profile disables it.
+    if not ENHANCE_DENOISE:
+        return enhanced
+
     return cv2.bilateralFilter(
         enhanced, d=5, sigmaColor=30, sigmaSpace=30
     )

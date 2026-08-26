@@ -92,3 +92,21 @@ def draw_status(frame, alarm_active: bool, x: int = 20) -> None:
         color,
         2
     )
+
+
+def draw_fps(frame, fps: float) -> None:
+    """Draw the live FPS counter in the top-right corner."""
+    text = f"{fps:.0f} FPS"
+    color = _GREEN if fps >= 15 else _AMBER if fps >= 8 else _RED
+    (w, _), _ = cv2.getTextSize(
+        text, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2
+    )
+    cv2.putText(
+        frame,
+        text,
+        (frame.shape[1] - w - 15, 30),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.7,
+        color,
+        2
+    )
