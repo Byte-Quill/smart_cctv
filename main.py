@@ -24,6 +24,7 @@ from config import (
     SNAPSHOT_INTERVAL,
     SIGHTING_LOG_INTERVAL,
     DETECTION_SCALE,
+    ENABLE_CNN_FALLBACK,
     TRACKING_SKIP_FRAMES,
     YOLO_SKIP_FRAMES,
     MOTION_ENABLED,
@@ -36,6 +37,7 @@ from config import (
     LOG_DIR,
     ANIMAL_DETECTION_ENABLED,
     UNKNOWN_HUMAN_DELAY_SECONDS,
+    SHOW_FPS,
 )
 
 from cctv.enhance import enhance_frame
@@ -50,6 +52,8 @@ from cctv.hud import (
     draw_family_text,
     draw_mode,
     draw_status,
+    draw_fps,
+    draw_unknown_alert,
 )
 from cctv.motion import MotionDetector
 from cctv.tracking import match_tracks
@@ -131,6 +135,9 @@ def main():
 
     camera.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_WIDTH)
     camera.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_HEIGHT)
+    # Keep the driver queue at a single frame so the display never lags
+    # behind real time while the pipeline is busy.
+    camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
     if not camera.isOpened():
         raise RuntimeError("Could not open camera.")
@@ -144,6 +151,10 @@ def main():
 
     tracked_faces = {}
     frame_counter = 0
+
+    # FPS measurement: smoothed frames-per-second for the HUD overlay
+    fps = 0.0
+    last_frame_time = time.time()
 
     # Last YOLO result, reused between throttled detection runs
     animal_seen, human_seen = False, False
@@ -172,6 +183,7 @@ def main():
             camera = cv2.VideoCapture(CAMERA_INDEX)
             camera.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_WIDTH)
             camera.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_HEIGHT)
+            camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
             reconnect_attempts += 1
 
@@ -181,34 +193,52 @@ def main():
 
             continue
 
+        # ── FPS measurement (smoothed) ──
+        now = time.time()
+        dt = now - last_frame_time
+        last_frame_time = now
+        if dt > 0:
+            inst = 1.0 / dt
+            fps = inst if fps == 0.0 else 0.9 * fps + 0.1 * inst
+
         # ── Motion gate ──
-        # Skip the expensive pipeline when nothing moves. Tracks are kept
-        # alive so a face that stops moving is not lost.
-        if MOTION_ENABLED and not motion.has_motion(frame):
-            continue
+        # When nothing moves, skip the expensive pipeline — but the frame
+        # is still displayed below, so the video never freezes. Tracks are
+        # aged out gradually (via match_tracks) so stale boxes fade away.
+        has_motion = not MOTION_ENABLED or motion.has_motion(frame)
 
-        # ── Image enhancement ──
-        enhanced = enhance_frame(frame)
+        if has_motion:
 
-        # ── Downscale for recognition speed ──
-        small_frame = cv2.resize(
-            enhanced,
-            (0, 0),
-            fx=DETECTION_SCALE,
-            fy=DETECTION_SCALE
+            # ── Image enhancement ──
+            enhanced = enhance_frame(frame)
+
+            # ── Downscale for recognition speed ──
+            small_frame = cv2.resize(
+                enhanced,
+                (0, 0),
+                fx=DETECTION_SCALE,
+                fy=DETECTION_SCALE
+            )
+
+            rgb_frame = cv2.cvtColor(
+                small_frame,
+                cv2.COLOR_BGR2RGB
+            )
+
+        else:
+            rgb_frame = None
+
+        # Full-resolution frame for CNN fallback. Only converted when the
+        # fallback is enabled — otherwise this is wasted work every frame.
+        rgb_full = (
+            cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            if ENABLE_CNN_FALLBACK else None
         )
-
-        rgb_frame = cv2.cvtColor(
-            small_frame,
-            cv2.COLOR_BGR2RGB
-        )
-
-        # Full-resolution frame for CNN fallback
-        rgb_full = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
         # Find all faces and their encodings in this frame.
-        # Skip detection on non-detection frames, rely on track persistence.
-        if frame_counter % TRACKING_SKIP_FRAMES == 0:
+        # Skip detection on idle and non-detection frames, rely on track
+        # persistence in between.
+        if has_motion and frame_counter % TRACKING_SKIP_FRAMES == 0:
             locations, encodings = detect_faces_enhanced(
                 rgb_frame, rgb_full
             )
@@ -264,6 +294,10 @@ def main():
 
         # Draw all tracked faces with smoothed boxes
         draw_face_boxes(frame, displayed_faces)
+
+        # Prominent red banner whenever an unknown face is on screen
+        if unknown_faces:
+            draw_unknown_alert(frame)
 
         frame_counter += 1
 
@@ -399,6 +433,11 @@ def main():
         # Show overall system status (alarm on or ok)
 
         draw_status(frame, siren.is_active)
+
+        # Show the live FPS counter
+
+        if SHOW_FPS:
+            draw_fps(frame, fps)
 
         # Show the current camera frame
 
