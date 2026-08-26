@@ -41,16 +41,22 @@ def draw_face_boxes(frame, faces) -> None:
         )
 
 
-def draw_countdown(frame, remaining: float, x: int = 20, y: int = 40) -> None:
-    """Overlay the siren countdown.
+def draw_countdown(frame, remaining: float) -> None:
+    """Overlay the siren countdown, centered below the unknown banner.
 
     The red 'UNKNOWN PERSON DETECTED' banner is the single unknown
     warning, so this only shows the time left before the siren fires.
+    It is drawn on its own line (y = 85) so the two texts never overlap.
     """
+    text = f"SIREN IN {remaining:.1f}s"
+    (w, _), _ = cv2.getTextSize(
+        text, cv2.FONT_HERSHEY_SIMPLEX, 1, 3
+    )
+    x = (frame.shape[1] - w) // 2
     cv2.putText(
         frame,
-        f"SIREN IN {remaining:.1f}s",
-        (x, y),
+        text,
+        (x, 85),
         cv2.FONT_HERSHEY_SIMPLEX,
         1,
         _RED,
