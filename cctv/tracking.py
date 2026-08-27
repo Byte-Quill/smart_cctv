@@ -1,8 +1,8 @@
 """Temporal face tracking: smoothed boxes and majority-vote identity."""
 
-from collections import Counter, deque
+import math
 
-import numpy as np
+from collections import Counter, deque
 
 from config import (
     ENSEMBLE_FRAMES,
@@ -43,7 +43,7 @@ class FaceHistory:
         """Mean confidence over the window."""
         if not self.confidences:
             return 0.0
-        return float(np.mean(self.confidences))
+        return sum(self.confidences) / len(self.confidences)
 
 
 class FaceTrack:
@@ -92,10 +92,25 @@ def _centroid(location) -> tuple[int, int]:
     return ((left + right) // 2, (top + bottom) // 2)
 
 
+def _decay_survivors(
+    tracks: TrackDict,
+    matched: frozenset = frozenset(),
+) -> TrackDict:
+    """Decay patience on every unmatched track; return those still alive."""
+    survivors: TrackDict = {}
+    for tid, track in tracks.items():
+        if tid in matched:
+            continue
+        track.decay_patience()
+        if track.is_alive:
+            survivors[tid] = track
+    return survivors
+
+
 def match_tracks(
     current_faces: list,
     prev_tracks: TrackDict,
-    _frame_counter: int
+    frame_counter: int
 ) -> TrackDict:
     """
     Match current-frame face locations to existing tracks by centroid distance.
@@ -103,45 +118,36 @@ def match_tracks(
     - On skip frames: decays patience, keeps tracks alive
     Returns updated {track_id: FaceTrack} dict.
     """
-    new_tracks: TrackDict = {}
-
     # On skip frames, just decay all tracks and return
-    if _frame_counter % TRACKING_SKIP_FRAMES != 0:
-        for tid, track in prev_tracks.items():
-            track.decay_patience()
-            if track.is_alive:
-                new_tracks[tid] = track
-        return new_tracks
+    if frame_counter % TRACKING_SKIP_FRAMES != 0:
+        return _decay_survivors(prev_tracks)
 
+    new_tracks: TrackDict = {}
     matched = set()
     next_id = max(prev_tracks.keys(), default=-1) + 1
 
-    for _loc, name, conf in current_faces:
+    for loc, name, conf in current_faces:
         best_id = -1
         best_dist = 60  # centroid distance threshold (detection-scale pixels)
-        cx, cy = _centroid(_loc)
+        cx, cy = _centroid(loc)
         for tid, track in prev_tracks.items():
             if tid in matched:
                 continue
             tcx, tcy = _centroid(track.last_seen)
-            d = ((cx - tcx) ** 2 + (cy - tcy) ** 2) ** 0.5
+            d = math.hypot(cx - tcx, cy - tcy)
             if d < best_dist:
                 best_dist = d
                 best_id = tid
         if best_id >= 0:
             matched.add(best_id)
             track = prev_tracks[best_id]
-            track.update(_loc, name, conf)
+            track.update(loc, name, conf)
             new_tracks[best_id] = track
         else:
-            new_tracks[next_id] = FaceTrack(_loc, name, conf)
+            new_tracks[next_id] = FaceTrack(loc, name, conf)
             next_id += 1
 
     # Keep unmatched tracks alive (patience decay)
-    for tid, track in prev_tracks.items():
-        if tid not in matched:
-            track.decay_patience()
-            if track.is_alive:
-                new_tracks[tid] = track
+    new_tracks.update(_decay_survivors(prev_tracks, matched))
 
     return new_tracks

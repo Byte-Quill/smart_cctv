@@ -156,58 +156,79 @@ def recognize_face(
     return "UNKNOWN", best_distance, confidence
 
 
+# Minimum FULL-RES face height accepted from the CNN fallback. The int()
+# truncation is deliberate (e.g. scale 0.4 -> int(2.5) = 2): it expresses
+# the HOG-size gate in full-resolution pixels.
+_CNN_MIN_FACE_SIZE = MIN_FACE_SIZE * int(1 / DETECTION_SCALE)
+
+
+def _drop_tiny(locations):
+    """Keep only faces at least MIN_FACE_SIZE px tall (detection scale)."""
+    return [
+        (t, r, b, l) for (t, r, b, l) in locations
+        if b - t >= MIN_FACE_SIZE
+    ]
+
+
+def _cnn_fallback(rgb_frame_full):
+    """Run CNN on the full-res frame; return locations in small-frame coords.
+
+    Returns [] when the CNN model is unavailable.
+    """
+    try:
+        locations = face_recognition.face_locations(
+            rgb_frame_full, model="cnn"
+        )
+    except Exception:
+        return []  # CNN model may not be available; silently fall back
+
+    # Scale CNN locations DOWN to small-frame coords
+    return [
+        (
+            int(t * DETECTION_SCALE),
+            int(r * DETECTION_SCALE),
+            int(b * DETECTION_SCALE),
+            int(l * DETECTION_SCALE),
+        )
+        for (t, r, b, l) in locations
+        if b - t >= _CNN_MIN_FACE_SIZE
+    ]
+
+
+def _drop_blurry(rgb_frame_small, locations):
+    """Drop blurry faces: their encodings jitter and cause mis-recognition.
+
+    Blur is measured on the small frame's grayscale (cheap) with the
+    registration threshold scaled to the detection resolution.
+    """
+    gray_small = cv2.cvtColor(rgb_frame_small, cv2.COLOR_RGB2GRAY)
+    min_blur = BLUR_THRESHOLD * (DETECTION_SCALE ** 2)
+    sharp = []
+    for (t, r, b, l) in locations:
+        roi = gray_small[t:b, l:r]
+        if roi.size == 0:
+            continue
+        if cv2.Laplacian(roi, cv2.CV_64F).var() >= min_blur:
+            sharp.append((t, r, b, l))
+    return sharp
+
+
 # Enhanced face detection: HOG first, then CNN fallback if nothing found.
 # Returns (locations, encodings) in the SMALL-frame coordinate system.
 def detect_faces_enhanced(rgb_frame_small, rgb_frame_full):
 
     # Try HOG on the small (enhanced) frame
-    locations = face_recognition.face_locations(
-        rgb_frame_small, model="hog"
+    locations = _drop_tiny(
+        face_recognition.face_locations(rgb_frame_small, model="hog")
     )
 
-    # Filter tiny detections
-    filtered = []
-    for (t, r, b, l) in locations:
-        face_h = b - t
-        if face_h >= MIN_FACE_SIZE:
-            filtered.append((t, r, b, l))
-    locations = filtered
-
     # If HOG found nothing AND CNN is enabled, try CNN on the full-res frame
-    if len(locations) == 0 and ENABLE_CNN_FALLBACK:
-        try:
-            locations = face_recognition.face_locations(
-                rgb_frame_full, model="cnn"
-            )
-            # Scale CNN locations DOWN to small-frame coords
-            scaled = []
-            for (t, r, b, l) in locations:
-                face_h = b - t
-                if face_h >= MIN_FACE_SIZE * int(1 / DETECTION_SCALE):
-                    st = int(t * DETECTION_SCALE)
-                    sr = int(r * DETECTION_SCALE)
-                    sb = int(b * DETECTION_SCALE)
-                    sl = int(l * DETECTION_SCALE)
-                    scaled.append((st, sr, sb, sl))
-            locations = scaled
-        except Exception:
-            pass  # CNN model may not be available; silently fall back
+    if not locations and ENABLE_CNN_FALLBACK:
+        locations = _cnn_fallback(rgb_frame_full)
 
-    # Quality gate: blurry faces produce unstable encodings that cause
-    # mis-recognition, so drop them before encoding. Blur is measured on
-    # the small frame's grayscale (cheap) with the registration threshold
-    # scaled to the detection resolution.
+    # Quality gate before encoding
     if locations:
-        gray_small = cv2.cvtColor(rgb_frame_small, cv2.COLOR_RGB2GRAY)
-        min_blur = BLUR_THRESHOLD * (DETECTION_SCALE ** 2)
-        sharp = []
-        for (t, r, b, l) in locations:
-            roi = gray_small[t:b, l:r]
-            if roi.size == 0:
-                continue
-            if cv2.Laplacian(roi, cv2.CV_64F).var() >= min_blur:
-                sharp.append((t, r, b, l))
-        locations = sharp
+        locations = _drop_blurry(rgb_frame_small, locations)
 
     encodings = face_recognition.face_encodings(
         rgb_frame_small, locations, num_jitters=RECOGNITION_JITTERS

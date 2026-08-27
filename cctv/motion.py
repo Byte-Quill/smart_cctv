@@ -39,8 +39,13 @@ class MotionDetector:
         self.bg_alpha = bg_alpha
         self._bg_gray = None
 
-    def motion(self, frame: np.ndarray) -> float:
-        """Return the fraction of changed pixels (0.0-1.0) vs background."""
+    def _fraction_changed(self, frame: np.ndarray) -> float:
+        """Diff one frame against the background and advance the model.
+
+        Returns the fraction of changed pixels (0.0-1.0). The background
+        advances exactly once per call, so the first frame initializes it
+        and reports no motion.
+        """
         gray = _preprocess(frame, self.scale)
 
         if self._bg_gray is None:
@@ -61,30 +66,13 @@ class MotionDetector:
         )
         return float(np.count_nonzero(thresh)) / thresh.size
 
+    def motion(self, frame: np.ndarray) -> float:
+        """Return the fraction of changed pixels (0.0-1.0) vs background."""
+        return self._fraction_changed(frame)
+
     def has_motion(self, frame: np.ndarray) -> bool:
-        """True when the frame differs enough from the background.
-
-        Advances the background exactly once per call (unlike calling
-        ``motion()`` twice, which would compare against the same frame).
-        """
-        gray = _preprocess(frame, self.scale)
-
-        # First frame: initialize the background and report no motion.
-        if self._bg_gray is None:
-            self._bg_gray = gray
-            return False
-
-        diff = cv2.absdiff(self._bg_gray, gray)
-
-        a = self.bg_alpha
-        self._bg_gray = cv2.convertScaleAbs(
-            (1.0 - a) * self._bg_gray + a * gray
-        )
-
-        _, thresh = cv2.threshold(
-            diff, self.threshold, 255, cv2.THRESH_BINARY
-        )
-        return float(np.count_nonzero(thresh)) / thresh.size >= self.min_area
+        """True when the frame differs enough from the background."""
+        return self._fraction_changed(frame) >= self.min_area
 
     def reset(self):
         self._bg_gray = None

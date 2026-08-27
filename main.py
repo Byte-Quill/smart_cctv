@@ -142,33 +142,19 @@ def main():
 
     known_encodings, known_names = load_family_database()
 
-    print("\n--------------------------------")
-    print("SMART CCTV")
-    print("--------------------------------")
-
     print(
-        f"Family face samples: "
-        f"{len(known_encodings)}"
-    )
-
-    print(
-        f"Recognition tolerance: "
-        f"{FACE_TOLERANCE}"
-    )
-
-    print(
-        f"Unknown delay: "
-        f"{UNKNOWN_DELAY_SECONDS}s"
-    )
-
-    print(
+        "\n--------------------------------\n"
+        "SMART CCTV\n"
+        "--------------------------------\n"
+        f"Family face samples: {len(known_encodings)}\n"
+        f"Recognition tolerance: {FACE_TOLERANCE}\n"
+        f"Unknown delay: {UNKNOWN_DELAY_SECONDS}s\n"
         f"Security modes (Nepal time): "
         f"day siren {SIREN_DAY_DURATION}s, "
         f"night mode from {NIGHT_START_HOUR:02d}:00 "
-        f"siren {SIREN_NIGHT_DURATION}s"
+        f"siren {SIREN_NIGHT_DURATION}s\n"
+        "--------------------------------\n"
     )
-
-    print("--------------------------------\n")
 
     # Open the camera through the hardware abstraction layer so the same
     # code runs on a PC today and on a Raspberry Pi 5 / ESP32-CAM later.
@@ -364,10 +350,11 @@ def main():
 
                 # Use smoothed location, convert to full-res coords
                 top, right, bottom, left = track.smoothed
-                scale = DETECTION_SCALE
                 ftop, fright, fbottom, fleft = (
-                    int(top / scale), int(right / scale),
-                    int(bottom / scale), int(left / scale)
+                    int(top / DETECTION_SCALE),
+                    int(right / DETECTION_SCALE),
+                    int(bottom / DETECTION_SCALE),
+                    int(left / DETECTION_SCALE),
                 )
 
                 if final_name == "UNKNOWN":
@@ -408,7 +395,8 @@ def main():
 
             # Shorter confirmation delay in night security mode,
             # fastest delay when YOLO confirms a human
-            if is_night_mode():
+            night_mode = is_night_mode()
+            if night_mode:
                 active_delay = NIGHT_UNKNOWN_DELAY_SECONDS
             elif human_seen:
                 active_delay = UNKNOWN_HUMAN_DELAY_SECONDS
@@ -423,65 +411,34 @@ def main():
 
                 if unknown_count >= UNKNOWN_CONFIRMATIONS:
 
+                    now = time.time()
+
                     if unknown_start is None:
 
-                        unknown_start = time.time()
+                        unknown_start = now
 
-                        print(
-                            "\nUNKNOWN PERSON CONFIRMED"
-                        )
+                        print("\nUNKNOWN PERSON CONFIRMED")
+                        logger.warning("Unknown person confirmed")
+                        log_event("UNKNOWN_CONFIRMED")
 
-                        logger.warning(
-                            "Unknown person confirmed"
-                        )
-
-                        log_event(
-                            "UNKNOWN_CONFIRMED"
-                        )
-
-                    elapsed = (
-                        time.time()
-                        -
-                        unknown_start
-                    )
-
-                    remaining = max(
-                        0,
-                        active_delay
-                        -
-                        elapsed
-                    )
+                    elapsed = now - unknown_start
+                    remaining = max(0, active_delay - elapsed)
 
                     # Save a snapshot every few seconds
 
-                    if (
-                        time.time()
-                        -
-                        last_snapshot
-                        >= SNAPSHOT_INTERVAL
-                    ):
+                    if now - last_snapshot >= SNAPSHOT_INTERVAL:
 
-                        timestamp = nepal_now().strftime(
-                            "%Y%m%d_%H%M%S"
-                        )
-
+                        timestamp = nepal_now().strftime("%Y%m%d_%H%M%S")
                         path = os.path.join(
                             SNAPSHOT_DIR,
                             f"unknown_{timestamp}.jpg"
                         )
 
-                        cv2.imwrite(
-                            path,
-                            frame
-                        )
+                        cv2.imwrite(path, frame)
 
-                        log_event(
-                            "UNKNOWN_SNAPSHOT",
-                            "UNKNOWN",
-                            path
-                        )
+                        log_event("UNKNOWN_SNAPSHOT", "UNKNOWN", path)
 
-                        last_snapshot = time.time()
+                        last_snapshot = now
 
                     # Show countdown on screen
                     draw_countdown(frame, remaining)
@@ -502,8 +459,7 @@ def main():
                     # instant a run finishes. 0.0 = never stopped = ready.
                     cooled_down = (
                         siren.last_stop == 0.0
-                        or time.time() - siren.last_stop
-                        >= SIREN_RETRIGGER_COOLDOWN
+                        or now - siren.last_stop >= SIREN_RETRIGGER_COOLDOWN
                     )
 
                     if (
@@ -519,7 +475,7 @@ def main():
                         log_event(
                             "SIREN_TRIGGERED",
                             "UNKNOWN",
-                            f"mode={'NIGHT' if is_night_mode() else 'DAY'},"
+                            f"mode={'NIGHT' if night_mode else 'DAY'},"
                             f" auto-stop={duration}s"
                         )
 
@@ -547,7 +503,7 @@ def main():
 
             # Show whether night security mode is active (Nepal time)
 
-            draw_mode(frame, is_night_mode())
+            draw_mode(frame, night_mode)
 
             # Show overall system status (alarm on or ok)
 

@@ -130,50 +130,47 @@ def main() -> None:
             face_box = (top, right, bottom, left)
             face_h = bottom - top
 
-            # Quality check chain ──
-            # 1) minimum size
-            if face_large_enough(face_h):
-                # 2) brightness
-                if brightness_ok(brightness):
-                    # 3) blur
-                    blur_val = estimate_blur(gray[top:bottom, left:right])
-                    if blur_ok(blur_val):
-                        # 4) encoding + duplicate check
-                        face_roi = rgb[top:bottom, left:right]
-                        if face_roi.size > 0:
-                            enc = compute_encoding(face_roi)
-                            if enc is not None:
-                                # compare against all known encodings
-                                all_encs = existing_encodings
-                                # also compare against the last captured
-                                if last_encoding is not None:
-                                    all_encs = all_encs + [last_encoding]
+            # Quality check chain: size → lighting → blur → duplicate pose.
+            # A rejection is reported only on the first unstable frame so
+            # the console stays quiet while the user adjusts.
+            reject_reason = None
 
-                                if not is_duplicate_pose(enc, all_encs):
-                                    face_encoding = enc
-                                    quality_ok = True
-                                else:
-                                    # print only first time to reduce noise
-                                    if stable_frames == 0:
-                                        print("  [SKIP]  duplicate pose (already captured)")
-                                    skipped_dup += 1
-                            else:
-                                if stable_frames == 0:
-                                    print("  [SKIP]  could not encode face")
-                        else:
-                            if stable_frames == 0:
-                                print("  [SKIP]  empty face region")
-                    else:
-                        if stable_frames == 0:
-                            print(f"  [SKIP]  blurry ({blur_val:.0f})")
-                        skipped_blurry += 1
-                else:
-                    if stable_frames == 0:
-                        print(f"  [SKIP]  bad lighting ({brightness:.0f})")
-                    skipped_badlight += 1
+            if not face_large_enough(face_h):
+                reject_reason = f"face too small ({face_h}px)"
+            elif not brightness_ok(brightness):
+                reject_reason = f"bad lighting ({brightness:.0f})"
+                skipped_badlight += 1
             else:
-                if stable_frames == 0:
-                    print(f"  [SKIP]  face too small ({face_h}px)")
+                blur_val = estimate_blur(gray[top:bottom, left:right])
+                if not blur_ok(blur_val):
+                    reject_reason = f"blurry ({blur_val:.0f})"
+                    skipped_blurry += 1
+                else:
+                    face_roi = rgb[top:bottom, left:right]
+                    enc = (
+                        compute_encoding(face_roi)
+                        if face_roi.size > 0 else None
+                    )
+                    if face_roi.size == 0:
+                        reject_reason = "empty face region"
+                    elif enc is None:
+                        reject_reason = "could not encode face"
+                    else:
+                        # Compare against all known encodings plus the
+                        # last captured one.
+                        all_encs = existing_encodings
+                        if last_encoding is not None:
+                            all_encs = all_encs + [last_encoding]
+
+                        if is_duplicate_pose(enc, all_encs):
+                            reject_reason = "duplicate pose (already captured)"
+                            skipped_dup += 1
+                        else:
+                            face_encoding = enc
+                            quality_ok = True
+
+            if reject_reason is not None and stable_frames == 0:
+                print(f"  [SKIP]  {reject_reason}")
 
         else:
             if stable_frames % 30 == 0:

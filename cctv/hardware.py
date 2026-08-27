@@ -28,14 +28,12 @@ def open_camera() -> cv2.VideoCapture:
     in which backend/index is chosen. An ESP32-CAM would be reached via
     its MJPEG/RTSP stream URL instead of a local device index.
     """
-    if HARDWARE_PROFILE == "esp32":
-        # ESP32-CAM typically serves an MJPEG stream over HTTP. Point
-        # CAMERA_INDEX at the stream URL (e.g. "http://192.168.1.50:81/stream")
-        # and OpenCV will decode it like a local camera.
-        camera = cv2.VideoCapture(CAMERA_INDEX)
-    else:
-        # "pc" and "pi": a locally attached webcam / Pi camera module.
-        camera = cv2.VideoCapture(CAMERA_INDEX)
+    # Every profile currently opens the camera through OpenCV. For an
+    # ESP32-CAM, point CAMERA_INDEX at the board's MJPEG stream URL
+    # (e.g. "http://192.168.1.50:81/stream") and OpenCV decodes it like a
+    # local camera; "pc" and "pi" use a locally attached webcam / Pi
+    # camera module instead.
+    camera = cv2.VideoCapture(CAMERA_INDEX)
 
     camera.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_WIDTH)
     camera.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_HEIGHT)
