@@ -122,8 +122,13 @@ def main() -> None:
         brightness = gray.mean()
 
         if face_locs:
-            # Pick the largest face in the frame (nearest to camera)
+            # Pick the largest face in the frame (nearest to camera).
+            # largest_face() only returns None for an empty list, which
+            # face_locs cannot be here — the guard keeps Pylance happy.
             face_box = largest_face(face_locs)
+            if face_box is None:
+                continue
+
             top, right, bottom, left = face_box
             face_h = bottom - top
 
