@@ -125,14 +125,14 @@ def enforce_retention(days: int = RETENTION_DAYS):
     # 1) Snapshot files
     removed = 0
     if os.path.isdir(SNAPSHOT_DIR):
-        for fname in os.listdir(SNAPSHOT_DIR):
-            path = os.path.join(SNAPSHOT_DIR, fname)
-            try:
-                if os.path.getmtime(path) < cutoff_ts:
-                    os.remove(path)
-                    removed += 1
-            except OSError:
-                pass
+        with os.scandir(SNAPSHOT_DIR) as entries:
+            for entry in entries:
+                try:
+                    if entry.is_file() and entry.stat().st_mtime < cutoff_ts:
+                        os.remove(entry.path)
+                        removed += 1
+                except OSError:
+                    pass
 
     # 2) Database rows
     with _db_lock:

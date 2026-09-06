@@ -198,6 +198,14 @@ def main():
         if event == cv2.EVENT_LBUTTONDOWN:
             click_pos = (x, y)
 
+    def _in_button(pos, rect) -> bool:
+        """True when *pos* lies inside the button *rect* (x0, y0, x1, y1)."""
+        if pos is None or rect is None:
+            return False
+        px, py = pos
+        x0, y0, x1, y1 = rect
+        return x0 <= px <= x1 and y0 <= py <= y1
+
     # The window must exist before a mouse callback can be attached, so
     # create it explicitly (imshow alone would create it too late).
     cv2.namedWindow("Smart CCTV Security")
@@ -272,8 +280,9 @@ def main():
             dt = now - last_frame_time
             last_frame_time = now
             if dt > 0:
-                inst = 1.0 / dt
-                fps = inst if fps == 0.0 else 0.9 * fps + 0.1 * inst
+                # Standard EMA; seeding from 0.0 is fine — the first
+                # reading simply gets 10% weight and it converges fast.
+                fps = 0.9 * fps + 0.1 * (1.0 / dt)
 
             # ── Motion gate ──
             # When nothing moves, skip the expensive pipeline — but the frame
@@ -350,11 +359,9 @@ def main():
 
                 # Use smoothed location, convert to full-res coords
                 top, right, bottom, left = track.smoothed
-                ftop, fright, fbottom, fleft = (
-                    int(top / DETECTION_SCALE),
-                    int(right / DETECTION_SCALE),
-                    int(bottom / DETECTION_SCALE),
-                    int(left / DETECTION_SCALE),
+                fleft, ftop, fright, fbottom = (
+                    int(c / DETECTION_SCALE)
+                    for c in (left, top, right, bottom)
                 )
 
                 if final_name == "UNKNOWN":
@@ -516,11 +523,7 @@ def main():
 
             # Clickable '+ ADD FAMILY' button (bottom right). Hovering
             # brightens it; the rect is hit-tested against mouse clicks.
-            mx, my = mouse_pos
-            hover = False
-            if button_rect is not None:
-                bx0, by0, bx1, by1 = button_rect
-                hover = bx0 <= mx <= bx1 and by0 <= my <= by1
+            hover = _in_button(tuple(mouse_pos), button_rect)
             button_rect = draw_add_button(frame, hover)
 
             # Show the current camera frame
@@ -558,11 +561,9 @@ def main():
 
             # Mouse click on the '+ ADD FAMILY' button
             elif click_pos is not None:
-                cx, cy = click_pos
-                click_pos = None
-                bx0, by0, bx1, by1 = button_rect
-                if bx0 <= cx <= bx1 and by0 <= cy <= by1:
+                if _in_button(click_pos, button_rect):
                     _open_enrollment()
+                click_pos = None
 
     except KeyboardInterrupt:
         print("\nInterrupted by user.")

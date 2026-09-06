@@ -68,8 +68,8 @@ class ObjectDetector:
         """Majority vote over the recent detection window."""
         if not self._votes:
             return False, False
-        animals = sum(1 for a, _ in self._votes if a)
-        humans = sum(1 for _, h in self._votes if h)
+        animals = sum(a for a, _ in self._votes)
+        humans = sum(h for _, h in self._votes)
         half = len(self._votes) / 2
         return animals > half, humans > half
 

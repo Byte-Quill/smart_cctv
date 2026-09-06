@@ -27,84 +27,48 @@ def load_family_database():
 
     print("\nLoading family database...\n")
 
-    if not os.path.exists(FAMILY_DIR):
+    if not os.path.isdir(FAMILY_DIR):
         return encodings, names
 
-    for person in sorted(
-        os.listdir(FAMILY_DIR)
-    ):
-
-        person_path = os.path.join(
-            FAMILY_DIR,
-            person
-        )
-
+    for person in sorted(os.listdir(FAMILY_DIR)):
+        person_path = os.path.join(FAMILY_DIR, person)
         if not os.path.isdir(person_path):
             continue
 
         print(f"Loading: {person}")
 
-        for filename in sorted(
-            os.listdir(person_path)
-        ):
-
-            if not filename.lower().endswith(
-                (".jpg", ".jpeg", ".png")
-            ):
-                continue
-
-            image_path = os.path.join(
-                person_path,
-                filename
-            )
-
+        photos = sorted(
+            f for f in os.listdir(person_path)
+            if f.lower().endswith((".jpg", ".jpeg", ".png"))
+        )
+        for filename in photos:
+            image_path = os.path.join(person_path, filename)
             try:
-
-                image = face_recognition.load_image_file(
-                    image_path
-                )
-
+                image = face_recognition.load_image_file(image_path)
                 locations = face_recognition.face_locations(
-                    image,
-                    model="hog"
+                    image, model="hog"
                 )
 
                 # Photos must have exactly one face to be usable
                 if len(locations) != 1:
-
                     print(
                         f"  SKIPPED {filename}: "
                         f"expected exactly 1 face, "
                         f"found {len(locations)}"
                     )
-
                     continue
 
-                face_encoding = (
-                    face_recognition.face_encodings(
-                        image,
-                        locations,
-                        num_jitters=REGISTRATION_JITTERS
-                    )[0]
-                )
+                face_encoding = face_recognition.face_encodings(
+                    image, locations, num_jitters=REGISTRATION_JITTERS
+                )[0]
 
-                encodings.append(
-                    face_encoding
-                )
+                encodings.append(face_encoding)
+                names.append(person)
 
-                names.append(
-                    person
-                )
-
-                print(
-                    f"  Loaded {filename}"
-                )
+                print(f"  Loaded {filename}")
 
             except Exception as error:
-
-                print(
-                    f"  Error: {filename}: {error}"
-                )
+                print(f"  Error: {filename}: {error}")
 
     return encodings, names
 
@@ -143,8 +107,8 @@ def recognize_face(
         # close, the match is a coin flip — refuse to guess and treat
         # the face as UNKNOWN instead of naming the wrong person.
         if len(distances) > 1:
-            sorted_d = np.sort(distances)
-            if float(sorted_d[1] - sorted_d[0]) < MATCH_MARGIN:
+            runner_up = float(np.partition(distances, 1)[1])
+            if runner_up - best_distance < MATCH_MARGIN:
                 return "UNKNOWN", best_distance, confidence
 
         return (

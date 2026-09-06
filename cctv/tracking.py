@@ -86,6 +86,9 @@ class FaceTrack:
 
 TrackDict = dict[int, FaceTrack]
 
+# Max centroid distance (detection-scale px) for a detection to match a track.
+MATCH_DISTANCE_PX = 60
+
 
 def _centroid(location) -> tuple[int, int]:
     top, right, bottom, left = location
@@ -127,18 +130,17 @@ def match_tracks(
     next_id = max(prev_tracks.keys(), default=-1) + 1
 
     for loc, name, conf in current_faces:
-        best_id = -1
-        best_dist = 60  # centroid distance threshold (detection-scale pixels)
         cx, cy = _centroid(loc)
-        for tid, track in prev_tracks.items():
-            if tid in matched:
-                continue
-            tcx, tcy = _centroid(track.last_seen)
-            d = math.hypot(cx - tcx, cy - tcy)
-            if d < best_dist:
-                best_dist = d
-                best_id = tid
-        if best_id >= 0:
+        candidates = (
+            (math.hypot(cx - tcx, cy - tcy), tid)
+            for tid, track in prev_tracks.items()
+            if tid not in matched
+            for tcx, tcy in (_centroid(track.last_seen),)
+        )
+        best_dist, best_id = min(
+            candidates, default=(MATCH_DISTANCE_PX, -1)
+        )
+        if best_dist < MATCH_DISTANCE_PX:
             matched.add(best_id)
             track = prev_tracks[best_id]
             track.update(loc, name, conf)

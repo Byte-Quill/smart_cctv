@@ -68,9 +68,7 @@ def main() -> None:
         print("ERROR: Name cannot be empty.")
         return
 
-    safe_name = "".join(
-        c for c in name if c.isalnum() or c in (" ", "_", "-")
-    ).strip()
+    safe_name = sanitize_name(name)
     if not safe_name:
         print("ERROR: Invalid name (use letters, numbers, spaces, dashes).")
         return
@@ -123,12 +121,10 @@ def main() -> None:
         blur_val = 0.0
         brightness = gray.mean()
 
-        if len(face_locs) > 0:
-            # Pick the largest face in the frame
-            sizes = [(b - t) for (t, r, b, l) in face_locs]
-            best = int(np.argmax(sizes))
-            top, right, bottom, left = face_locs[best]
-            face_box = (top, right, bottom, left)
+        if face_locs:
+            # Pick the largest face in the frame (nearest to camera)
+            face_box = largest_face(face_locs)
+            top, right, bottom, left = face_box
             face_h = bottom - top
 
             # Quality check chain: size → lighting → blur → duplicate pose.

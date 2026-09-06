@@ -17,9 +17,9 @@ def _gamma_lut(gamma: float) -> np.ndarray:
     lut = _LUT_CACHE.get(key)
     if lut is None:
         g = key / 100.0
-        lut = np.array(
-            [pow(i / 255.0, g) * 255 for i in range(256)]
-        ).astype("uint8")
+        # Vectorized: (i/255)^gamma * 255 for i = 0..255
+        i = np.arange(256, dtype=np.float64)
+        lut = np.round((i / 255.0) ** g * 255.0).astype("uint8")
         _LUT_CACHE[key] = lut
     return lut
 
