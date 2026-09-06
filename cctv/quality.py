@@ -16,6 +16,28 @@ from config import (
 )
 
 
+def sanitize_name(name: str) -> str:
+    """Keep only letters, digits, spaces, dashes and underscores.
+
+    Shared by register.py (CLI) and cctv/enroll.py (in-app flow) so a
+    folder name is sanitized identically no matter which door is used.
+    """
+    return "".join(
+        c for c in name if c.isalnum() or c in (" ", "_", "-")
+    ).strip()
+
+
+def largest_face(face_locations: list):
+    """Return the tallest face box ``(top, right, bottom, left)``, or None.
+
+    Registration only ever cares about the person nearest the camera, so
+    both capture flows pick the largest detected face each frame.
+    """
+    if not face_locations:
+        return None
+    return max(face_locations, key=lambda loc: loc[2] - loc[0])
+
+
 def estimate_blur(gray: np.ndarray) -> float:
     """Laplacian variance — lower values mean more blur."""
     return cv2.Laplacian(gray, cv2.CV_64F).var()

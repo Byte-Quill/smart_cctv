@@ -34,7 +34,6 @@ import time
 
 import cv2
 import face_recognition
-import numpy as np
 
 from config import (
     CAMERA_INDEX,
@@ -53,6 +52,8 @@ from cctv.quality import (
     compute_encoding,
     load_existing_encodings,
     is_duplicate_pose,
+    sanitize_name,
+    largest_face,
 )
 
 

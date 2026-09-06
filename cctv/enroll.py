@@ -42,6 +42,8 @@ from cctv.quality import (
     compute_encoding,
     load_existing_encodings,
     is_duplicate_pose,
+    sanitize_name,
+    largest_face,
 )
 from cctv.timeutil import nepal_now
 
@@ -62,13 +64,9 @@ _THUMB_SIZE = 56
 # ----------------------------------------------------------------------
 # Small pure helpers (unit-tested in tests/test_enroll.py)
 # ----------------------------------------------------------------------
-
-def sanitize_name(name: str) -> str:
-    """Keep only letters, digits, spaces, dashes and underscores."""
-    return "".join(
-        c for c in name if c.isalnum() or c in (" ", "_", "-")
-    ).strip()
-
+# sanitize_name() lives in cctv/quality.py, shared with register.py; it is
+# imported above and re-exported here so `from cctv.enroll import
+# sanitize_name` keeps working unchanged.
 
 def zone_index(x: int, frame_width: int) -> int:
     """Map a pixel column to a zone: 0 = left, 1 = center, 2 = right."""
@@ -256,14 +254,11 @@ def run_capture(camera, safe_name: str) -> int:
 
         quality_ok = False
         in_zone = False
-        face_box = None
         face_encoding = None
 
-        if face_locs:
-            sizes = [(b - t) for (t, r, b, l) in face_locs]
-            best = int(np.argmax(sizes))
-            top, right, bottom, left = face_locs[best]
-            face_box = (top, right, bottom, left)
+        face_box = largest_face(face_locs)
+        if face_box is not None:
+            top, right, bottom, left = face_box
             center_x = (left + right) // 2
             in_zone = zone_index(center_x, w) == target_zone
 
@@ -281,13 +276,13 @@ def run_capture(camera, safe_name: str) -> int:
                     status, status_color = "Hold still (blurry)", _AMBER
                 else:
                     face_roi = rgb[top:bottom, left:right]
-                    try:
-                        enc = (
-                            compute_encoding(face_roi)
-                            if face_roi.size > 0 else None
-                        )
-                    except Exception:
-                        enc = None
+                    # compute_encoding() already swallows its own errors
+                    # and returns None on failure, so no try/except needed
+                    # here.
+                    enc = (
+                        compute_encoding(face_roi)
+                        if face_roi.size > 0 else None
+                    )
                     if enc is None:
                         status, status_color = "Face not clear, adjust", _AMBER
                     elif is_duplicate_pose(
