@@ -20,7 +20,8 @@ from config import (
 
 
 # Read all registered family photos and build their face encodings
-def load_family_database():
+# (legacy path: plain photo folders — kept only for migration)
+def load_family_database(family_dir: str = FAMILY_DIR):
 
     encodings = []
     names = []
@@ -71,6 +72,39 @@ def load_family_database():
                 print(f"  Error: {filename}: {error}")
 
     return encodings, names
+
+
+# Load the family database from the ENCRYPTED VAULT, migrating legacy
+# photo folders on first run. Returns (encodings, names, vault).
+def load_family_from_vault(cipher=None):
+    """Load family encodings from the encrypted vault.
+
+    On first run (or when legacy ``family/<Name>/`` photo folders still
+    exist), every photo is encrypted into the vault and the folder is
+    renamed to ``family.imported/`` so it can never be double-imported.
+    After migration the plaintext photos are no longer the source of
+    truth — the vault is.
+    """
+    from cctv.vault import FaceVault
+
+    vault = FaceVault(cipher=cipher)
+
+    # One-time migration from the legacy photo layout
+    if os.path.isdir(FAMILY_DIR):
+        subdirs = [
+            d for d in os.listdir(FAMILY_DIR)
+            if os.path.isdir(os.path.join(FAMILY_DIR, d))
+        ]
+        if subdirs:
+            imported = vault.migrate_family_photos(FAMILY_DIR)
+            if imported:
+                print(
+                    f"Vault migration: encrypted {imported} family "
+                    f"photo(s) into the vault."
+                )
+
+    encodings, names = vault.load_family()
+    return encodings, names, vault
 
 
 # Compare a detected face against all known faces, return name or UNKNOWN

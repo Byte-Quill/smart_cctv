@@ -6,10 +6,10 @@ main.py later loads as that person's reference encodings.
 
 How it works
 ------------
-1. You enter a name. A folder ``family/<Name>/`` is created to hold that
-   person's photos (one folder per person = one identity).
-2. The camera opens and watches for a face. A photo is only saved when it
-   passes every quality gate in cctv/quality.py:
+1. You enter a name. The encrypted vault (cctv/vault.py) opens a record
+   for that person — no plaintext photo folder is created anymore.
+2. The camera opens and watches for a face. A capture is only stored
+   when it passes every quality gate in cctv/quality.py:
        - face large enough      (MIN_REG_FACE_SIZE)
        - good lighting          (MIN_BRIGHTNESS..MAX_BRIGHTNESS)
        - sharp, not blurry      (BLUR_THRESHOLD)
@@ -20,13 +20,20 @@ How it works
 
 Why quality matters
 -------------------
-Recognition in main.py compares live faces against these photos. Ten
+Recognition in main.py compares live faces against these templates. Ten
 sharp, varied poses give a robust identity; blurry or duplicate shots
 weaken it. That is why this tool rejects bad frames instead of saving
 them.
 
-Re-running with the same name adds more photos to the existing folder.
-Delete the folder to remove a person.
+Why the vault?
+-------------
+Every capture is sealed with AES-256-GCM before it touches the disk
+(cctv/crypto.py), so a stolen laptop or a copied database cannot reveal
+or tamper with your family's biometric data. Deletions are tombstoned
+and audited, so nobody can silently erase a face.
+
+Re-running with the same name adds more templates to the existing vault
+record. Use vault_admin.py to remove a person.
 """
 
 import os
@@ -42,6 +49,7 @@ from config import (
     FAMILY_DIR,
     AUTO_CAPTURE_STABLE_FRAMES,
     TARGET_PHOTOS,
+    VAULT_KEY_SOURCE,
 )
 
 from cctv.quality import (
@@ -50,11 +58,23 @@ from cctv.quality import (
     blur_ok,
     face_large_enough,
     compute_encoding,
-    load_existing_encodings,
     is_duplicate_pose,
     sanitize_name,
     largest_face,
 )
+from cctv.vault import FaceVault
+
+
+def _open_vault() -> FaceVault:
+    """Open the encrypted vault, prompting for a passphrase if needed."""
+    if VAULT_KEY_SOURCE == "passphrase":
+        import getpass
+
+        passphrase = getpass.getpass("Vault passphrase: ")
+        from cctv.crypto import VaultCipher
+
+        return FaceVault(cipher=VaultCipher.from_passphrase(passphrase))
+    return FaceVault()
 
 
 def main() -> None:
@@ -73,11 +93,18 @@ def main() -> None:
         print("ERROR: Invalid name (use letters, numbers, spaces, dashes).")
         return
 
-    folder = os.path.join(FAMILY_DIR, safe_name)
-    os.makedirs(folder, exist_ok=True)
+    try:
+        vault = _open_vault()
+    except Exception as err:
+        print(f"ERROR: Could not open the encrypted vault: {err}")
+        return
 
-    # Load any existing photos of this person (re-registration)
-    existing_encodings = load_existing_encodings(folder)
+    # Existing templates of this person (re-registration support)
+    existing_encodings, existing_names = vault.load_family()
+    existing_encodings = [
+        e for e, n in zip(existing_encodings, existing_names)
+        if n == safe_name
+    ]
 
     print(f"\nOpening camera (index {CAMERA_INDEX}) …")
     camera = cv2.VideoCapture(CAMERA_INDEX)
@@ -182,16 +209,18 @@ def main() -> None:
         if quality_ok:
             stable_frames += 1
             if stable_frames >= AUTO_CAPTURE_STABLE_FRAMES:
-                timestamp = time.strftime("%Y%m%d_%H%M%S")
-                fname = f"face_{captured + 1:02d}_{timestamp}.jpg"
-                path = os.path.join(folder, fname)
-                cv2.imwrite(path, frame)
+                # Seal the encoding into the encrypted vault — no
+                # plaintext photo is ever written to disk.
+                vault.add_family_face(safe_name, face_encoding)
 
                 captured += 1
                 existing_encodings.append(face_encoding)
                 last_encoding = face_encoding
                 stable_frames = 0
-                print(f"  [OK]  captured {captured}/{TARGET_PHOTOS}  ({fname})")
+                print(
+                    f"  [OK]  encrypted capture {captured}/{TARGET_PHOTOS}"
+                    f"  (vault id {captured})"
+                )
         else:
             stable_frames = 0
 
@@ -227,15 +256,19 @@ def main() -> None:
 
         key = cv2.waitKey(1) & 0xFF
         if key == ord("q"):
-            print(f"\n  Quit early. Saved {captured} photos.")
+            print(f"\n  Quit early. Encrypted {captured} templates.")
             break
 
         if captured >= TARGET_PHOTOS:
-            print(f"\n  [OK]  Successfully registered {safe_name} ({captured} photos).")
+            print(
+                f"\n  [OK]  Registered {safe_name} "
+                f"({captured} encrypted templates)."
+            )
             break
 
     camera.release()
     cv2.destroyAllWindows()
+    vault.close()
 
 
 if __name__ == "__main__":

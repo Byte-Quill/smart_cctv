@@ -17,16 +17,17 @@
 
 ## ✨ Highlights
 
-| | |
-| --- | --- |
-| 👪 **Knows your family** | Guided registration learns faces; names appear in green with confidence % |
+|                             |                                                                                                                     |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| 👪 **Knows your family**    | Guided registration learns faces; names appear in green with confidence %                                           |
 | ➕ **One-click enrollment** | Click the `+ ADD FAMILY` button in the live view — type a name, then follow the glowing LEFT → CENTER → RIGHT zones |
-| 🚨 **Catches strangers** | Red `UNKNOWN PERSON DETECTED` banner, countdown, snapshots, loud siren |
-| 🇳🇵 **Nepal Time aware** | Day mode (2-min siren) and Night Security mode from 10 PM (5-min siren) |
-| 🐾 **No false alarms** | YOLOv8 suppresses the siren when only animals are in view |
-| ⚡ **Runs anywhere** | Three performance profiles: from 2-core/4 GB boxes up to GPU machines |
-| 🔌 **Future-ready** | Hardware abstraction for Raspberry Pi 5 and ESP32-CAM |
-| 🎞️ **Smooth video** | Motion gate + 1-frame camera queue — never freezes, never lags |
+| � **Encrypted face vault**  | Family & unknown faces sealed with AES-256-GCM; HMAC audit chain catches edits and deletions by attackers           |
+| �🚨 **Catches strangers**   | Red `UNKNOWN PERSON DETECTED` banner, countdown, snapshots, loud siren                                              |
+| 🇳🇵 **Nepal Time aware**     | Day mode (2-min siren) and Night Security mode from 10 PM (5-min siren)                                             |
+| 🐾 **No false alarms**      | YOLOv8 suppresses the siren when only animals are in view                                                           |
+| ⚡ **Runs anywhere**        | Three performance profiles: from 2-core/4 GB boxes up to GPU machines                                               |
+| 🔌 **Future-ready**         | Hardware abstraction for Raspberry Pi 5 and ESP32-CAM                                                               |
+| 🎞️ **Smooth video**         | Motion gate + 1-frame camera queue — never freezes, never lags                                                      |
 
 ---
 
@@ -39,6 +40,7 @@
 - [Requirements](#-requirements)
 - [Quick Start](#-quick-start)
 - [Family Registration](#-family-registration)
+- [Encrypted Face Vault](#-encrypted-face-vault)
 - [Running the System](#-running-the-system)
 - [Animal Detection](#-animal-detection)
 - [Performance Profiles](#-performance-profiles)
@@ -98,37 +100,37 @@ flowchart TD
 
 ### Face Detection
 
-| Feature | Description |
-| --- | --- |
-| HOG detection | Fast real-time face detection on scaled frames |
-| CNN fallback | Deep-learning detection when HOG finds nothing (balanced/high profiles) |
-| Min face size filter | Rejects tiny false-positive detections |
-| Dual-resolution scanning | Detection at reduced scale with optional full-res CNN |
+| Feature                  | Description                                                             |
+| ------------------------ | ----------------------------------------------------------------------- |
+| HOG detection            | Fast real-time face detection on scaled frames                          |
+| CNN fallback             | Deep-learning detection when HOG finds nothing (balanced/high profiles) |
+| Min face size filter     | Rejects tiny false-positive detections                                  |
+| Dual-resolution scanning | Detection at reduced scale with optional full-res CNN                   |
 
 ### Image Preprocessing
 
-| Technique | Benefit |
-| --- | --- |
-| Auto gamma correction | Brightens dark frames, dims overexposed ones |
-| CLAHE contrast enhancement | Improves face visibility in shadows and glare |
-| Bilateral denoising | Reduces noise while preserving edges (skipped on `low` profile for speed) |
+| Technique                  | Benefit                                                                   |
+| -------------------------- | ------------------------------------------------------------------------- |
+| Auto gamma correction      | Brightens dark frames, dims overexposed ones                              |
+| CLAHE contrast enhancement | Improves face visibility in shadows and glare                             |
+| Bilateral denoising        | Reduces noise while preserving edges (skipped on `low` profile for speed) |
 
 ### Temporal Tracking
 
-| Technique | Benefit |
-| --- | --- |
-| Majority-vote ensemble | Identity decided over a window of frames, not one |
-| Centroid track matching | Stable identity across detection gaps |
-| EMA box smoothing | Steady bounding boxes, less jitter |
-| Frame-skip detection | Full detection every N frames; tracks persist between |
+| Technique               | Benefit                                               |
+| ----------------------- | ----------------------------------------------------- |
+| Majority-vote ensemble  | Identity decided over a window of frames, not one     |
+| Centroid track matching | Stable identity across detection gaps                 |
+| EMA box smoothing       | Steady bounding boxes, less jitter                    |
+| Frame-skip detection    | Full detection every N frames; tracks persist between |
 
 ### Motion Gate
 
-| Technique | Benefit |
-| --- | --- |
-| Background-model differencing | Catches slow, gradual intrusion a naive diff misses |
-| Idle skip | Heavy pipeline runs only when something moves |
-| Always-on display | Frames still render while idle — the video never freezes |
+| Technique                     | Benefit                                                  |
+| ----------------------------- | -------------------------------------------------------- |
+| Background-model differencing | Catches slow, gradual intrusion a naive diff misses      |
+| Idle skip                     | Heavy pipeline runs only when something moves            |
+| Always-on display             | Frames still render while idle — the video never freezes |
 
 ### Registration (`register.py`)
 
@@ -155,15 +157,15 @@ flowchart TD
 
 #### Event Types
 
-| Event | Description |
-| --- | --- |
-| `SIREN_TRIGGERED` | Siren fired (records mode + auto-stop duration) |
-| `SIREN_ON` | Siren alarm activated |
-| `SIREN_OFF` | Siren silenced manually (`S` key) |
-| `SIREN_AUTO_OFF` | Siren auto-stopped when its duration expired |
-| `UNKNOWN_CONFIRMED` | Unknown person detected and confirmed |
-| `UNKNOWN_SNAPSHOT` | Snapshot saved of unknown person |
-| `FAMILY_SIGHTING` | Recognized family member spotted |
+| Event               | Description                                     |
+| ------------------- | ----------------------------------------------- |
+| `SIREN_TRIGGERED`   | Siren fired (records mode + auto-stop duration) |
+| `SIREN_ON`          | Siren alarm activated                           |
+| `SIREN_OFF`         | Siren silenced manually (`S` key)               |
+| `SIREN_AUTO_OFF`    | Siren auto-stopped when its duration expired    |
+| `UNKNOWN_CONFIRMED` | Unknown person detected and confirmed           |
+| `UNKNOWN_SNAPSHOT`  | Snapshot saved of unknown person                |
+| `FAMILY_SIGHTING`   | Recognized family member spotted                |
 
 ---
 
@@ -171,10 +173,10 @@ flowchart TD
 
 All time-of-day logic uses **Nepal Time** (NPT, UTC+5:45) via `cctv/timeutil.py`, so the system behaves correctly no matter what timezone the host machine is set to.
 
-| Mode | 🕐 Nepal time | ⏱️ Confirm delay | 🔊 Siren duration |
-| --- | --- | --- | --- |
-| ☀️ **Day** | 06:00–22:00 | 10 s (`UNKNOWN_DELAY_SECONDS`) | **2 min** (`SIREN_DAY_DURATION`) |
-| 🌙 **Night security** | 22:00–06:00 | 2 s (`NIGHT_UNKNOWN_DELAY_SECONDS`) | **5 min** (`SIREN_NIGHT_DURATION`) |
+| Mode                  | 🕐 Nepal time | ⏱️ Confirm delay                    | 🔊 Siren duration                  |
+| --------------------- | ------------- | ----------------------------------- | ---------------------------------- |
+| ☀️ **Day**            | 06:00–22:00   | 10 s (`UNKNOWN_DELAY_SECONDS`)      | **2 min** (`SIREN_DAY_DURATION`)   |
+| 🌙 **Night security** | 22:00–06:00   | 2 s (`NIGHT_UNKNOWN_DELAY_SECONDS`) | **5 min** (`SIREN_NIGHT_DURATION`) |
 
 - 🌙 **Night security mode arms automatically at 10 PM** Nepal time; the display switches to **NIGHT SECURITY MODE** (amber) with a faster response and longer siren.
 - ⏳ **The siren never runs forever.** It auto-stops after the mode's duration. A family member can silence it early by pressing **`S`**.
@@ -201,16 +203,16 @@ sequenceDiagram
 
 ## 📦 Requirements
 
-| Dependency | Purpose |
-| --- | --- |
-| Python 3.12+ | Runtime |
-| Webcam (USB, built-in, Pi camera, or ESP32-CAM stream) | Video input |
-| `opencv-python` | Camera capture, image processing |
-| `face_recognition` | Face detection and recognition |
-| `pygame` | Siren audio playback |
-| `numpy` | Numerical operations |
-| `setuptools<81` (Python 3.12+) | Provides `pkg_resources` for `face_recognition_models` |
-| `ultralytics` *(optional)* | YOLOv8 animal/human detection — only if `ANIMAL_DETECTION_ENABLED = True` |
+| Dependency                                             | Purpose                                                                   |
+| ------------------------------------------------------ | ------------------------------------------------------------------------- |
+| Python 3.12+                                           | Runtime                                                                   |
+| Webcam (USB, built-in, Pi camera, or ESP32-CAM stream) | Video input                                                               |
+| `opencv-python`                                        | Camera capture, image processing                                          |
+| `face_recognition`                                     | Face detection and recognition                                            |
+| `pygame`                                               | Siren audio playback                                                      |
+| `numpy`                                                | Numerical operations                                                      |
+| `setuptools<81` (Python 3.12+)                         | Provides `pkg_resources` for `face_recognition_models`                    |
+| `ultralytics` _(optional)_                             | YOLOv8 animal/human detection — only if `ANIMAL_DETECTION_ENABLED = True` |
 
 ---
 
@@ -244,7 +246,8 @@ python main.py
 ## 👪 Family Registration
 
 There are **two ways** to add a family member — both use the same quality
-gates and save photos to `family/<name>/`.
+gates and encrypt every capture into the **face vault** (`logs/vault.db`).
+No plaintext photo is ever written to disk.
 
 ### Option 1 — In-app (easiest) ➕
 
@@ -285,7 +288,64 @@ python register.py
 - Keep expressions neutral
 - Register from multiple angles
 
-Photos are stored in `family/<name>/` — one folder per person. Re-run with the same name to add more photos; delete the folder to remove a person.
+Templates are sealed into the encrypted vault as they are captured. Re-run
+with the same name to add more templates; use `vault_admin.py remove <Name>`
+to remove a person (the deletion is audited, never silent).
+
+---
+
+## 🔐 Encrypted Face Vault
+
+Face encodings are **biometric identifiers** — a stolen database must not
+leak whose faces the system knows, and an attacker with disk access must
+not be able to edit or silently delete them. The vault provides three
+layers of protection:
+
+| Layer                                | What it stops                                                                                                  |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
+| **AES-256-GCM encryption** (per row) | Reading or rewriting family/unknown templates from a stolen `vault.db`, backup, or disk image                  |
+| **Two separate tables**              | `family_faces` (household templates) and `unknown_faces` (intruder sightings) are stored apart, both encrypted |
+| **HMAC-SHA256 audit chain**          | Editing a row, deleting a row, or forging audit entries — every startup scan names the exact table + row id    |
+
+### How it works
+
+- **Family faces** — `register.py` and the in-app enrollment seal each
+  128-d encoding (plus the person's name) into `family_faces` before it
+  touches the disk. Recognition decrypts them in memory at startup.
+- **Unknown faces** — every confirmed stranger's encoding is sealed into
+  `unknown_faces` with a sighting counter and `last_seen` timestamp;
+  repeat intruders are deduplicated automatically.
+- **Tamper evidence** — every insert/update/delete appends a chained
+  HMAC entry (`audit_chain`). Deleting or editing a row breaks the chain;
+  `main.py` verifies it at every startup and **fails closed** (refuses to
+  run) if tampering is detected.
+- **Soft deletes** — removing a person tombstones the rows instead of
+  erasing them, so a hacker cannot silently wipe a face.
+
+### Key management (`VAULT_KEY_SOURCE` in `config.py`)
+
+| Mode                  | Behaviour                                                                                                                                     |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `"keyfile"` (default) | Random 32-byte key auto-generated in `logs/.vault.key` (0600 perms). Zero prompts; protects against stolen disks and copies.                  |
+| `"passphrase"`        | Key derived from a password you type at startup (PBKDF2-HMAC-SHA256, 600k iterations). The key **never touches the disk** — strongest option. |
+
+### Admin CLI
+
+```bash
+python vault_admin.py list              # family members + template counts
+python vault_admin.py unknown           # intruder records (sightings, last seen)
+python vault_admin.py remove <Name>     # tombstone a family member (audited)
+python vault_admin.py verify            # full tamper-evidence scan
+python vault_admin.py stats             # vault summary
+```
+
+### Legacy photo migration
+
+If you registered family members with an older version (plain
+`family/<Name>/` photo folders), the first run of `main.py` automatically
+encrypts every photo into the vault and renames the folder to
+`family.imported/` — so nothing is ever double-imported and the plaintext
+copies are taken out of the recognition path.
 
 ---
 
@@ -339,11 +399,11 @@ To save CPU, YOLO runs only every `YOLO_SKIP_FRAMES` frames and only while an un
 
 Set `PERFORMANCE_MODE` in `config.py` to match your hardware. The same pipeline runs in all three modes — only the tunables change, so **no feature is ever removed**.
 
-| Mode | 🖥️ Target hardware | 📐 Resolution | 🔍 Detection | ✨ Denoise | 🧠 CNN fallback | 🐾 YOLO |
-| --- | --- | --- | --- | --- | --- | --- |
-| 🐢 `low` | ~4 GB RAM, 2-core CPU, Raspberry Pi, old laptops | 640×480 | every 4th frame, 0.4 scale | off | off | off |
-| 🚶 `balanced` | Typical laptops/desktops (4–8 cores) | 1280×720 | every 2nd frame, 0.5 scale | on | off | on |
-| 🚀 `high` | Strong multi-core machines, ideally with a GPU | 1920×1080 | every frame, 0.5 scale | on | on | on |
+| Mode          | 🖥️ Target hardware                               | 📐 Resolution | 🔍 Detection               | ✨ Denoise | 🧠 CNN fallback | 🐾 YOLO |
+| ------------- | ------------------------------------------------ | ------------- | -------------------------- | ---------- | --------------- | ------- |
+| 🐢 `low`      | ~4 GB RAM, 2-core CPU, Raspberry Pi, old laptops | 640×480       | every 4th frame, 0.4 scale | off        | off             | off     |
+| 🚶 `balanced` | Typical laptops/desktops (4–8 cores)             | 1280×720      | every 2nd frame, 0.5 scale | on         | off             | on      |
+| 🚀 `high`     | Strong multi-core machines, ideally with a GPU   | 1920×1080     | every frame, 0.5 scale     | on         | on              | on      |
 
 **Smooth-video guarantees in all modes:**
 
@@ -359,11 +419,11 @@ On a low-end box, start with `low`. If the FPS counter stays green and you want 
 
 The system is built to move to smaller boards. All device-specific code lives behind `cctv/hardware.py`, selected by `HARDWARE_PROFILE` in `config.py`:
 
-| Profile | Device | Camera | Notes |
-| --- | --- | --- | --- |
-| 💻 `pc` | Desktop/laptop (default) | Local webcam | Current target |
-| 🍓 `pi` | Raspberry Pi 5 | Pi camera / USB cam | Same stack; GPIO relay hook point for an external siren |
-| 📡 `esp32` | ESP32-CAM | MJPEG/RTSP stream | Board only captures; the face pipeline runs on a host machine |
+| Profile    | Device                   | Camera              | Notes                                                         |
+| ---------- | ------------------------ | ------------------- | ------------------------------------------------------------- |
+| 💻 `pc`    | Desktop/laptop (default) | Local webcam        | Current target                                                |
+| 🍓 `pi`    | Raspberry Pi 5           | Pi camera / USB cam | Same stack; GPIO relay hook point for an external siren       |
+| 📡 `esp32` | ESP32-CAM                | MJPEG/RTSP stream   | Board only captures; the face pipeline runs on a host machine |
 
 For an **ESP32-CAM**, set `CAMERA_INDEX` to the board's stream URL (e.g. `http://192.168.1.50:81/stream`) — OpenCV decodes it like a local camera. Pair `PERFORMANCE_MODE = "low"` with these boards.
 
@@ -457,91 +517,91 @@ All tunable parameters live in `config.py`.
 
 ### Camera
 
-| Setting | Default | Description |
-| --- | --- | --- |
-| `CAMERA_INDEX` | `0` | Camera device index (`0` = built-in/webcam) |
+| Setting        | Default | Description                                 |
+| -------------- | ------- | ------------------------------------------- |
+| `CAMERA_INDEX` | `0`     | Camera device index (`0` = built-in/webcam) |
 
 ### Recognition
 
-| Setting | Default | Description |
-| --- | --- | --- |
-| `FACE_TOLERANCE` | `0.42` | Max Euclidean distance for a match (lower = stricter) |
-| `MATCH_MARGIN` | `0.04` | Best match must beat the runner-up by this margin, else UNKNOWN |
-| `REGISTRATION_JITTERS` | `5` | dlib jitters when building family encodings (stronger DB) |
-| `RECOGNITION_JITTERS` | `1` | dlib jitters per live frame (kept low for speed) |
-| `IDENTITY_MIN_VOTES` | `2` | Frames a face must be seen before its identity is trusted |
-| `UNKNOWN_CONFIRMATIONS` | `5` | Consecutive frames to confirm an unknown person |
+| Setting                 | Default | Description                                                     |
+| ----------------------- | ------- | --------------------------------------------------------------- |
+| `FACE_TOLERANCE`        | `0.42`  | Max Euclidean distance for a match (lower = stricter)           |
+| `MATCH_MARGIN`          | `0.04`  | Best match must beat the runner-up by this margin, else UNKNOWN |
+| `REGISTRATION_JITTERS`  | `5`     | dlib jitters when building family encodings (stronger DB)       |
+| `RECOGNITION_JITTERS`   | `1`     | dlib jitters per live frame (kept low for speed)                |
+| `IDENTITY_MIN_VOTES`    | `2`     | Frames a face must be seen before its identity is trusted       |
+| `UNKNOWN_CONFIRMATIONS` | `5`     | Consecutive frames to confirm an unknown person                 |
 
 ### Alarm Timing
 
-| Setting | Default | Description |
-| --- | --- | --- |
-| `UNKNOWN_DELAY_SECONDS` | `10` | Seconds an unknown must linger before siren (daytime) |
-| `NIGHT_UNKNOWN_DELAY_SECONDS` | `2` | Seconds before siren in night security mode |
-| `UNKNOWN_HUMAN_DELAY_SECONDS` | `1` | Seconds before siren when YOLO confirms a human |
-| `SIREN_DAY_DURATION` | `120` | Siren auto-stop duration in daytime (2 min) |
-| `SIREN_NIGHT_DURATION` | `300` | Siren auto-stop duration in night mode (5 min) |
-| `SIREN_RETRIGGER_COOLDOWN` | `60` | Seconds before the siren may re-trigger after auto-stop |
+| Setting                       | Default | Description                                             |
+| ----------------------------- | ------- | ------------------------------------------------------- |
+| `UNKNOWN_DELAY_SECONDS`       | `10`    | Seconds an unknown must linger before siren (daytime)   |
+| `NIGHT_UNKNOWN_DELAY_SECONDS` | `2`     | Seconds before siren in night security mode             |
+| `UNKNOWN_HUMAN_DELAY_SECONDS` | `1`     | Seconds before siren when YOLO confirms a human         |
+| `SIREN_DAY_DURATION`          | `120`   | Siren auto-stop duration in daytime (2 min)             |
+| `SIREN_NIGHT_DURATION`        | `300`   | Siren auto-stop duration in night mode (5 min)          |
+| `SIREN_RETRIGGER_COOLDOWN`    | `60`    | Seconds before the siren may re-trigger after auto-stop |
 
 ### Security Mode Hours (Nepal Time)
 
-| Setting | Default | Description |
-| --- | --- | --- |
-| `NIGHT_START_HOUR` | `22` | Hour night security mode arms (10 PM NPT) |
-| `NIGHT_END_HOUR` | `6` | Hour night security mode ends (6 AM NPT) |
-| `NEPAL_UTC_OFFSET_MINUTES` | `345` | Nepal Time offset (UTC+5:45) |
+| Setting                    | Default | Description                               |
+| -------------------------- | ------- | ----------------------------------------- |
+| `NIGHT_START_HOUR`         | `22`    | Hour night security mode arms (10 PM NPT) |
+| `NIGHT_END_HOUR`           | `6`     | Hour night security mode ends (6 AM NPT)  |
+| `NEPAL_UTC_OFFSET_MINUTES` | `345`   | Nepal Time offset (UTC+5:45)              |
 
 ### Snapshots and Logging
 
-| Setting | Default | Description |
-| --- | --- | --- |
-| `SNAPSHOT_INTERVAL` | `5` | Seconds between unknown-person snapshots |
-| `SIGHTING_LOG_INTERVAL` | `30` | Min seconds between FAMILY_SIGHTING logs per person |
+| Setting                 | Default | Description                                         |
+| ----------------------- | ------- | --------------------------------------------------- |
+| `SNAPSHOT_INTERVAL`     | `5`     | Seconds between unknown-person snapshots            |
+| `SIGHTING_LOG_INTERVAL` | `30`    | Min seconds between FAMILY_SIGHTING logs per person |
 
 ### Detection
 
-| Setting | Default | Description |
-| --- | --- | --- |
-| `DETECTION_SCALE` | `0.5` | Face detection resolution (0.5 = half-size) |
-| `MIN_FACE_SIZE` | `40` | Minimum face height (px) at detection scale |
-| `ENABLE_CNN_FALLBACK` | `True` | Use CNN when HOG finds nothing |
-| `ANIMAL_DETECTION_ENABLED` | `True` | Enable YOLO animal/human classification |
-| `YOLO_SKIP_FRAMES` | `3` | Run YOLO every N frames while an unknown lingers |
+| Setting                    | Default | Description                                      |
+| -------------------------- | ------- | ------------------------------------------------ |
+| `DETECTION_SCALE`          | `0.5`   | Face detection resolution (0.5 = half-size)      |
+| `MIN_FACE_SIZE`            | `40`    | Minimum face height (px) at detection scale      |
+| `ENABLE_CNN_FALLBACK`      | `True`  | Use CNN when HOG finds nothing                   |
+| `ANIMAL_DETECTION_ENABLED` | `True`  | Enable YOLO animal/human classification          |
+| `YOLO_SKIP_FRAMES`         | `3`     | Run YOLO every N frames while an unknown lingers |
 
 ### Tracking
 
-| Setting | Default | Description |
-| --- | --- | --- |
-| `ENSEMBLE_FRAMES` | `5` | Majority-vote window per tracked face |
-| `TRACKING_SKIP_FRAMES` | `2` | Run full face detection every N frames |
-| `TRACKING_SMOOTH_ALPHA` | `0.6` | EMA alpha for bounding box smoothing |
-| `TRACKING_PATIENCE` | `5` | Frames to keep a track alive after disappearance |
+| Setting                 | Default | Description                                      |
+| ----------------------- | ------- | ------------------------------------------------ |
+| `ENSEMBLE_FRAMES`       | `5`     | Majority-vote window per tracked face            |
+| `TRACKING_SKIP_FRAMES`  | `2`     | Run full face detection every N frames           |
+| `TRACKING_SMOOTH_ALPHA` | `0.6`   | EMA alpha for bounding box smoothing             |
+| `TRACKING_PATIENCE`     | `5`     | Frames to keep a track alive after disappearance |
 
 ### Registration Quality
 
-| Setting | Default | Description |
-| --- | --- | --- |
-| `MIN_REG_FACE_SIZE` | `80` | Minimum face height (px, full-res) |
-| `BLUR_THRESHOLD` | `80` | Laplacian variance floor (lower = blurrier) |
-| `MIN_BRIGHTNESS` | `40` | Minimum mean pixel brightness (0–255) |
-| `MAX_BRIGHTNESS` | `215` | Maximum mean pixel brightness (0–255) |
-| `MIN_ENCODING_DISTANCE` | `0.25` | Min distance to reject duplicate poses |
-| `AUTO_CAPTURE_STABLE_FRAMES` | `8` | Good frames needed before auto-capture |
+| Setting                      | Default | Description                                 |
+| ---------------------------- | ------- | ------------------------------------------- |
+| `MIN_REG_FACE_SIZE`          | `80`    | Minimum face height (px, full-res)          |
+| `BLUR_THRESHOLD`             | `80`    | Laplacian variance floor (lower = blurrier) |
+| `MIN_BRIGHTNESS`             | `40`    | Minimum mean pixel brightness (0–255)       |
+| `MAX_BRIGHTNESS`             | `215`   | Maximum mean pixel brightness (0–255)       |
+| `MIN_ENCODING_DISTANCE`      | `0.25`  | Min distance to reject duplicate poses      |
+| `AUTO_CAPTURE_STABLE_FRAMES` | `8`     | Good frames needed before auto-capture      |
 
 ### Folders and Audio
 
-| Setting | Default | Description |
-| --- | --- | --- |
-| `FAMILY_DIR` | `"family"` | Registered family photos |
-| `SNAPSHOT_DIR` | `"snapshots"` | Unknown-person snapshots |
-| `LOG_DIR` | `"logs"` | Security logs and database |
-| `SIREN_FILE` | `"sounds/siren.wav"` | Path to siren WAV file |
+| Setting        | Default              | Description                |
+| -------------- | -------------------- | -------------------------- |
+| `FAMILY_DIR`   | `"family"`           | Registered family photos   |
+| `SNAPSHOT_DIR` | `"snapshots"`        | Unknown-person snapshots   |
+| `LOG_DIR`      | `"logs"`             | Security logs and database |
+| `SIREN_FILE`   | `"sounds/siren.wav"` | Path to siren WAV file     |
 
 ---
 
 ## 🗄️ Database Schema
 
-**File:** `logs/events.db`
+### Event log — `logs/events.db`
 
 ```sql
 CREATE TABLE events (
@@ -559,14 +619,49 @@ Example query:
 sqlite3 logs/events.db "SELECT * FROM events ORDER BY id DESC LIMIT 10;"
 ```
 
+### Encrypted face vault — `logs/vault.db`
+
+```sql
+CREATE TABLE family_faces (      -- encrypted household templates
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    sealed BLOB NOT NULL,        -- AES-256-GCM(name + 128-d encoding)
+    sealed_hmac BLOB NOT NULL,    -- per-row tamper seal
+    created_at TEXT NOT NULL,
+    deleted INTEGER NOT NULL DEFAULT 0   -- tombstone (soft delete)
+);
+
+CREATE TABLE unknown_faces (     -- encrypted intruder sightings
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    sealed BLOB NOT NULL,        -- AES-256-GCM(encoding + metadata)
+    sealed_hmac BLOB NOT NULL,
+    created_at TEXT NOT NULL,
+    last_seen TEXT NOT NULL,
+    sightings INTEGER NOT NULL DEFAULT 1,
+    deleted INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE audit_chain (       -- append-only HMAC tamper evidence
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    table_name TEXT NOT NULL,
+    row_id INTEGER NOT NULL,
+    action TEXT NOT NULL,        -- INSERT / UPDATE / DELETE
+    prev_hmac BLOB NOT NULL,     -- chain link to the previous entry
+    entry_hmac BLOB NOT NULL     -- HMAC over this entry's fields
+);
+```
+
+> 🔒 The `sealed` columns are AES-256-GCM ciphertext — names and face
+> encodings are **never stored in plaintext**. Inspect the vault with
+> `python vault_admin.py list / unknown / verify` instead of sqlite3.
+
 ---
 
 ## ⌨️ Keyboard Controls
 
-| Key | Function |
-| --- | --- |
-| `Q` | Quit the system |
-| `S` | Stop / silence the siren |
+| Key | Function                                                |
+| --- | ------------------------------------------------------- |
+| `Q` | Quit the system                                         |
+| `S` | Stop / silence the siren                                |
 | `A` | Add a family member (same as the `+ ADD FAMILY` button) |
 
 ---

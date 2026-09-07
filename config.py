@@ -19,7 +19,10 @@ Sections at a glance:
     8. Alarm & timing
     9. Snapshots & logging
     10. Registration quality
+    11. Encrypted face vault
 """
+
+import os
 
 # ----------------------------------------------------------------------
 # 0. PERFORMANCE PROFILE (low / balanced / high)
@@ -75,6 +78,52 @@ SNAPSHOT_DIR = "snapshots"
 
 # Where the SQLite event DB (events.db) and text audit log (security.log) live.
 LOG_DIR = "logs"
+
+# ----------------------------------------------------------------------
+# 1b. ENCRYPTED FACE VAULT
+# ----------------------------------------------------------------------
+# Face encodings are biometric identifiers — anyone who can read the
+# disk (or a stolen laptop) must NOT be able to extract, edit, or
+# silently delete them. The vault (cctv/vault.py) therefore stores:
+#
+#   • family faces   → table `family_faces`  (encrypted name + encoding)
+#   • unknown faces  → table `unknown_faces` (encrypted intruder encodings)
+#
+# Both tables are AES-256-GCM encrypted per row, and every write is
+# chained into an HMAC-SHA256 tamper-evidence log, so a hacker who
+# edits, deletes, or injects rows is caught on the next integrity scan.
+#
+# Where the AES key comes from (pick ONE):
+#   • "keyfile" (default) — a random 32-byte key in logs/.vault.key,
+#     created automatically with 0600 permissions on first run.
+#     Zero-interaction, protects against disk theft/copies.
+#   • "passphrase" — key derived from a password you type at startup
+#     (PBKDF2-HMAC-SHA256, 600k iterations). Strongest option: the
+#     key never exists on disk. main.py/register.py will prompt for it.
+VAULT_KEY_SOURCE = "keyfile"
+
+# Path of the key file when VAULT_KEY_SOURCE = "keyfile".
+VAULT_KEY_FILE = os.path.join(LOG_DIR, ".vault.key")
+
+# PBKDF2 iteration count for passphrase-derived keys (OWASP 2023+ guidance).
+VAULT_PBKDF2_ITERATIONS = 600_000
+
+# Delete unknown-face records (encodings + audit chain entries) older
+# than this many days. Family faces are NEVER auto-deleted.
+VAULT_UNKNOWN_RETENTION_DAYS = 30
+
+# How many recent unknown-face sightings to keep per distinct intruder
+# (deduplicated by encoding distance). Keeps the vault from growing
+# forever when the same stranger keeps returning.
+VAULT_MAX_UNKNOWN_PER_PERSON = 20
+
+# Two unknown encodings closer than this distance are treated as the
+# same intruder (matches FACE_TOLERANCE semantics).
+VAULT_UNKNOWN_MATCH_DISTANCE = 0.42
+
+# Verify the vault's HMAC integrity chain at every startup and refuse
+# to run (fail-closed) if any row was edited or deleted by an attacker.
+VAULT_VERIFY_ON_STARTUP = True
 
 # Delete snapshots, database rows, and log lines older than this many days.
 RETENTION_DAYS = 30

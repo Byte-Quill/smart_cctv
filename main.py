@@ -75,11 +75,14 @@ from config import (
     STARTUP_SIREN_TEST_DURATION,
     NIGHT_START_HOUR,
     MIRROR_DISPLAY,
+    VAULT_KEY_SOURCE,
+    VAULT_VERIFY_ON_STARTUP,
 )
 
 from cctv.enhance import enhance_frame
 from cctv.faces import (
     load_family_database,
+    load_family_from_vault,
     recognize_face,
     detect_faces_enhanced,
 )
@@ -104,6 +107,7 @@ from cctv.storage import (
     logger,
     enforce_retention,
 )
+from cctv.vault import FaceVault
 from cctv import hardware
 from cctv.timeutil import (
     is_night_mode,
@@ -124,6 +128,45 @@ def main():
     initialize_database()
     enforce_retention()
 
+    # ── Encrypted face vault ──
+    # Open the vault (prompting for a passphrase if configured), verify
+    # its HMAC tamper-evidence chain, and fail CLOSED if an attacker
+    # edited or deleted biometric records — a compromised vault must
+    # never silently continue.
+    vault_cipher = None
+    if VAULT_KEY_SOURCE == "passphrase":
+        import getpass
+        from cctv.crypto import VaultCipher
+
+        while vault_cipher is None:
+            try:
+                passphrase = getpass.getpass("Vault passphrase: ")
+                vault_cipher = VaultCipher.from_passphrase(passphrase)
+            except Exception as err:
+                print(f"Invalid passphrase ({err}); try again.")
+
+    vault = FaceVault(cipher=vault_cipher)
+
+    if VAULT_VERIFY_ON_STARTUP:
+        problems = vault.verify_integrity()
+        if problems:
+            print("\n" + "!" * 60)
+            print("VAULT INTEGRITY FAILURE — biometric data was tampered with")
+            print("!" * 60)
+            for problem in problems:
+                print(f"  • {problem}")
+            print(
+                "\nRefusing to run with a compromised vault (fail-closed).\n"
+                "Restore logs/vault.db from a trusted backup, or delete\n"
+                "it and re-register your family."
+            )
+            vault.close()
+            return
+        print("Vault integrity verified — no tampering detected.")
+
+    vault.enforce_unknown_retention()
+    vault.cap_unknown_per_person()
+
     siren = Siren()
 
     # Audible power-on self-test so a presenter can confirm the alarm
@@ -140,7 +183,16 @@ def main():
         bg_alpha=MOTION_BG_ALPHA,
     )
 
-    known_encodings, known_names = load_family_database()
+    known_encodings, known_names, vault = load_family_from_vault(
+        cipher=vault_cipher
+    )
+
+    # Unknown-face templates recorded since the last run, so repeat
+    # intruders can be flagged even before the family DB is consulted.
+    unknown_encodings, unknown_infos = vault.load_unknown()
+    print(
+        f"Unknown-face records in vault: {len(unknown_encodings)}"
+    )
 
     print(
         "\n--------------------------------\n"
@@ -222,14 +274,16 @@ def main():
         unknown_start = None
 
         try:
-            enrolled = run_enrollment(camera)
+            enrolled = run_enrollment(camera, vault=vault)
         except Exception as err:
             print(f"[ENROLL] Error during enrollment: {err}")
             enrolled = False
 
         if enrolled:
-            # Pick up the new photos immediately without a restart
-            known_encodings, known_names = load_family_database()
+            # Pick up the new templates immediately without a restart
+            known_encodings, known_names, _ = load_family_from_vault(
+                cipher=vault_cipher
+            )
             print(
                 f"Family database reloaded: "
                 f"{len(known_encodings)} samples."
@@ -338,6 +392,23 @@ def main():
                     known_encodings,
                     known_names
                 )
+
+                # Every confirmed stranger's template is sealed into the
+                # encrypted unknown-faces table, so repeat intruders are
+                # recognised and their sighting count grows.
+                if name == "UNKNOWN" and unknown_count >= UNKNOWN_CONFIRMATIONS:
+                    try:
+                        vault.record_unknown(
+                            encoding,
+                            metadata={
+                                "mode": (
+                                    "NIGHT" if is_night_mode() else "DAY"
+                                ),
+                            },
+                        )
+                    except Exception as err:
+                        print(f"Vault write failed: {err}")
+
                 raw_faces.append((location, name, confidence))
 
             # Update tracks with smoothing and frame-skip. Skip the call
@@ -575,6 +646,8 @@ def main():
         camera.release()
 
         cv2.destroyAllWindows()
+
+        vault.close()
 
         print("\nSmart CCTV stopped safely.")
 

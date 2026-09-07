@@ -17,8 +17,10 @@ the user through two screens, all inside the same window:
 
 The quality gates are exactly the ones ``register.py`` uses
 (cctv/quality.py), so both doors build equally strong reference sets.
-Photos land in ``family/<Name>/`` like the CLI tool; ``main.py`` reloads
-the family database when enrollment finishes.
+Templates land in the ENCRYPTED VAULT (cctv/vault.py) — sealed with
+AES-256-GCM before touching the disk — and ``main.py`` reloads the
+family database when enrollment finishes. No plaintext photo is ever
+written.
 """
 
 import os
@@ -40,7 +42,6 @@ from cctv.quality import (
     blur_ok,
     face_large_enough,
     compute_encoding,
-    load_existing_encodings,
     is_duplicate_pose,
     sanitize_name,
     largest_face,
@@ -216,12 +217,18 @@ def run_name_entry(camera):
 # Screen 2 — guided left-to-right capture
 # ----------------------------------------------------------------------
 
-def run_capture(camera, safe_name: str) -> int:
-    """Guided zone capture. Returns the number of photos saved."""
-    folder = os.path.join(FAMILY_DIR, safe_name)
-    os.makedirs(folder, exist_ok=True)
+def run_capture(camera, safe_name: str, vault=None) -> int:
+    """Guided zone capture. Returns the number of templates encrypted."""
+    from cctv.vault import FaceVault
 
-    known_encs = load_existing_encodings(folder)  # re-registration support
+    if vault is None:
+        vault = FaceVault()
+
+    # Existing templates of this person (re-registration support)
+    all_encs, all_names = vault.load_family()
+    known_encs = [
+        e for e, n in zip(all_encs, all_names) if n == safe_name
+    ]
     session_encs = []
     thumbnails = []
 
@@ -307,11 +314,9 @@ def run_capture(camera, safe_name: str) -> int:
         if quality_ok and in_zone:
             stable += 1
             if stable >= AUTO_CAPTURE_STABLE_FRAMES:
-                stamp = nepal_now().strftime("%Y%m%d_%H%M%S")
-                fname = (
-                    f"face_{len(known_encs) + captured + 1:02d}_{stamp}.jpg"
-                )
-                cv2.imwrite(os.path.join(folder, fname), frame)
+                # Seal the encoding into the encrypted vault — no
+                # plaintext photo is ever written to disk.
+                vault.add_family_face(safe_name, face_encoding)
 
                 captured += 1
                 session_encs.append(face_encoding)
@@ -319,7 +324,7 @@ def run_capture(camera, safe_name: str) -> int:
                 stable = 0
                 target_zone = (target_zone + 1) % len(_ZONES)
                 print(
-                    f"[ENROLL] captured {captured}/{TARGET_PHOTOS} ({fname})"
+                    f"[ENROLL] encrypted capture {captured}/{TARGET_PHOTOS}"
                 )
         else:
             stable = 0
@@ -379,7 +384,7 @@ def run_capture(camera, safe_name: str) -> int:
                 x += _THUMB_SIZE + gap
 
         cv2.putText(
-            display, "Q / ESC = finish and keep photos", (15, h - 12),
+            display, "Q / ESC = finish and keep templates", (15, h - 12),
             cv2.FONT_HERSHEY_SIMPLEX, 0.5, _GRAY, 1
         )
 
@@ -396,12 +401,12 @@ def run_capture(camera, safe_name: str) -> int:
 # Entry point used by main.py
 # ----------------------------------------------------------------------
 
-def run_enrollment(camera) -> bool:
+def run_enrollment(camera, vault=None) -> bool:
     """Run the full in-app enrollment flow on *camera*.
 
-    Returns True when at least one photo was saved (main.py then reloads
-    the family database). The caller keeps owning the camera; this flow
-    only borrows it until it returns.
+    Returns True when at least one template was encrypted (main.py then
+    reloads the family database). The caller keeps owning the camera;
+    this flow only borrows it until it returns.
     """
     print("\n[ENROLL] Add-family-member mode opened.")
 
@@ -410,11 +415,11 @@ def run_enrollment(camera) -> bool:
         print("[ENROLL] Cancelled at name entry.")
         return False
 
-    captured = run_capture(camera, name)
+    captured = run_capture(camera, name, vault=vault)
 
     if captured > 0:
-        print(f"[ENROLL] Registered '{name}' with {captured} photos.")
+        print(f"[ENROLL] Registered '{name}' with {captured} encrypted templates.")
         return True
 
-    print(f"[ENROLL] No photos captured for '{name}'.")
+    print(f"[ENROLL] No templates captured for '{name}'.")
     return False
