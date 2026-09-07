@@ -37,7 +37,9 @@ Both are thin orchestrators. All real work lives in the `cctv/` package.
 ```
 cctv/
 ├── enhance.py    → fix brightness/contrast/denoise before detection
-├── faces.py      → load family DB, detect faces (HOG/CNN), recognize
+├── faces.py      → load family DB (vault-backed), detect faces (HOG/CNN), recognize
+├── crypto.py     → AES-256-GCM sealing + key management (keyfile / passphrase)
+├── vault.py      → encrypted face vault: family + unknown tables, HMAC audit chain
 ├── tracking.py   → smooth boxes over time, majority-vote identity
 ├── motion.py     → cheap motion gate that skips heavy work when idle
 ├── yolo.py       → optional animal/human scene analysis (false alarms)
@@ -102,16 +104,41 @@ camera.read()
 
 ## 5. How recognition actually works
 
-1. `register.py` saves photos; each photo is turned into a **128-d
-   encoding** (a numeric "face signature") by dlib.
-2. At startup, `main.py` loads every family photo and keeps their
-   encodings + names in memory (`load_family_database`).
+1. `register.py` (or the in-app enrollment) captures a face; each photo
+   is turned into a **128-d encoding** (a numeric "face signature") by
+   dlib, then **sealed with AES-256-GCM** into the encrypted vault
+   (`cctv/vault.py`) — no plaintext photo is ever written to disk.
+2. At startup, `main.py` opens the vault, verifies its HMAC
+   tamper-evidence chain (fail-closed on tampering), and decrypts every
+   family template into memory (`load_family_from_vault`).
 3. For each live face, the system computes its encoding and measures the
    **distance** to every family encoding.
-4. Smallest distance ≤ `FACE_TOLERANCE` (0.45) → that person is
+4. Smallest distance ≤ `FACE_TOLERANCE` (0.42) → that person is
    recognized; confidence is derived from how small the distance is.
 5. A single frame can lie, so `tracking.py` keeps a **majority vote**
    over the last `ENSEMBLE_FRAMES` frames before trusting an identity.
+6. Confirmed strangers have their encoding sealed into the vault's
+   `unknown_faces` table (deduplicated by distance), so repeat intruders
+   are tracked with a sighting count and `last_seen` timestamp.
+
+### 5a. The encrypted face vault
+
+Face encodings are biometric identifiers — they cannot be re-issued like
+a password. The vault therefore wraps them in three layers
+(`cctv/crypto.py` + `cctv/vault.py`):
+
+| Layer           | Mechanism                                                                                      | Stops                                                    |
+| --------------- | ---------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| Encryption      | AES-256-GCM per row (fresh salt + nonce)                                                       | reading / rewriting templates from a stolen `vault.db`   |
+| Separation      | `family_faces` and `unknown_faces` tables                                                      | mixing household data with intruder data                 |
+| Tamper evidence | append-only `audit_chain` (HMAC-SHA256, each entry links to the previous) + per-row HMAC seals | editing, deleting, or forging rows — detected at startup |
+
+Key management is chosen by `VAULT_KEY_SOURCE`: a `keyfile`
+(`logs/.vault.key`, 0600) for zero-interaction protection, or a
+`passphrase` (PBKDF2-HMAC-SHA256, 600k iterations) when the key must
+never touch the disk. `vault_admin.py` is the supported admin CLI
+(list / unknown / remove / verify / stats); every admin deletion is
+itself audited, and removals are tombstones, never silent erasures.
 
 ---
 
@@ -183,15 +210,20 @@ camera. Pair `PERFORMANCE_MODE = "low"` with these boards.
 ## 7. Data on disk
 
 ```
-family/<Name>/*.jpg     → reference photos per person (the face database)
-snapshots/*.jpg         → saved images of unknown people
-logs/events.db          → SQLite table of every event
-logs/security.log       → human-readable audit log
-sounds/siren.wav        → alarm sound
+logs/vault.db          → 🔐 encrypted face vault (family + unknown templates,
+                         AES-256-GCM sealed, HMAC audit chain)
+logs/.vault.key        → 🔑 vault key (keyfile mode, 0600 permissions)
+family.imported/       → legacy photos after one-time migration into the vault
+snapshots/*.jpg        → saved images of unknown people
+logs/events.db         → SQLite table of every event
+logs/security.log      → human-readable audit log
+sounds/siren.wav       → alarm sound
 ```
 
 `storage.py` enforces `RETENTION_DAYS`: snapshots, DB rows, and log lines
-older than the cutoff are deleted at startup.
+older than the cutoff are deleted at startup. The vault ages out unknown
+records after `VAULT_UNKNOWN_RETENTION_DAYS` (tombstoned + audited);
+family templates are never auto-deleted.
 
 ---
 
@@ -212,6 +244,17 @@ The system is written to **degrade, not crash**:
 - **SQL injection** → all queries use parameterized `?` placeholders.
 - **Path safety** → registration sanitizes the name before creating the
   folder (`register.py`).
+- **Biometric data at rest** → every face template is AES-256-GCM sealed
+  in the vault before touching the disk (`crypto.py`); a stolen database
+  or backup is useless without the key.
+- **Biometric tampering** → per-row HMAC seals + an append-only HMAC
+  audit chain detect edits, deletions, and forged entries; `main.py`
+  verifies at startup and **fails closed** (`vault.py`).
+- **Silent deletion** → removing a person tombstones the rows (soft
+  delete) and appends an audited chain entry — nothing is erased
+  without a trace.
+- **Key theft** → `passphrase` mode derives the key with PBKDF2
+  (600k iterations) so it never exists on disk.
 
 ---
 
@@ -220,12 +263,14 @@ The system is written to **degrade, not crash**:
 | Symptom                 | Start here                                     |
 | ----------------------- | ---------------------------------------------- |
 | Video freezes / lags    | `main.py` motion gate + `CAP_PROP_BUFFERSIZE`  |
-| Everyone shows UNKNOWN  | `family/<Name>/` empty → run `register.py`     |
+| Everyone shows UNKNOWN  | vault empty → run `register.py`                |
 | Wrong person recognized | `FACE_TOLERANCE` in `config.py`                |
 | Too many false alarms   | `MOTION_THRESHOLD`, `MOTION_MIN_AREA`, YOLO    |
 | No siren sound          | audio device + `sounds/siren.wav` (`siren.py`) |
 | Slow on a small device  | `PERFORMANCE_MODE = "low"` in `config.py`      |
 | Events not saved        | `logs/` permissions (`storage.py`)             |
+| Vault integrity failure | `vault_admin.py verify` (`cctv/vault.py`)      |
+| Vault key lost          | delete `logs/vault.db` + re-register family    |
 
 ---
 

@@ -31,6 +31,9 @@ PIPELINE (per camera frame, in ``main.py``)
                        mode and siren durations all read from here
          hardware.py → device abstraction (pc / pi / esp32) so the system
                        can move to a Raspberry Pi 5 or ESP32-CAM later
+         crypto.py   → AES-256-GCM sealing + vault key management
+         vault.py    → encrypted face vault: family + unknown tables,
+                       HMAC tamper-evidence audit chain, soft deletes
 
     Registration quality gates (used by ``register.py`` and the in-app
     enrollment flow in ``enroll.py``):
@@ -42,7 +45,12 @@ PIPELINE (per camera frame, in ``main.py``)
 
 MODULE → JOB
     enhance   — brightness/contrast/denoise frame preprocessing.
-    faces     — load the family DB, detect (HOG + CNN fallback), recognize.
+    faces     — load the family DB (vault-backed), detect (HOG + CNN
+                fallback), recognize.
+    crypto    — AES-256-GCM authenticated encryption + key management
+                (keyfile or passphrase-derived).
+    vault     — encrypted face storage: family_faces + unknown_faces
+                tables, HMAC audit chain, tombstoned deletes.
     tracking  — temporal smoothing of boxes + majority-vote identity.
     motion    — background-model motion gate that skips the heavy pipeline.
     yolo      — YOLOv8 animal/human classification (false-alarm suppression).

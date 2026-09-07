@@ -490,18 +490,21 @@ All pipeline stages are separate modules in the `cctv/` package; `main.py` is a 
 │   ├── timeutil.py     # Nepal Time clock + day/night security mode
 │   └── hardware.py     # Device abstraction (pc / pi / esp32)
 │
-├── tests/              # Unit tests (32 tests, no camera/audio needed)
+├── vault_admin.py      # Encrypted vault admin CLI (list/remove/verify)
 │
-├── family/             # Registered family photos (one folder per person)
-│   └── <name>/
-│       └── face_01_20260824_120000.jpg
+├── tests/              # Unit tests (70 tests, no camera/audio needed)
+│
+├── family/             # Legacy photo folder — auto-migrated into the
+│   └── family.imported/  # vault on first run (kept as backup)
 │
 ├── snapshots/          # Unknown-person snapshots
 │   └── unknown_20260824_220000.jpg
 │
-├── logs/               # Security events
+├── logs/               # Security events + encrypted face vault
 │   ├── security.log    # Human-readable log
-│   └── events.db       # SQLite database
+│   ├── events.db       # SQLite event database
+│   ├── vault.db        # 🔐 Encrypted face vault (AES-256-GCM)
+│   └── .vault.key      # 🔑 Vault key (0600, keyfile mode)
 │
 ├── sounds/             # Audio files
 │   └── siren.wav       # Siren alarm sound
@@ -590,12 +593,24 @@ All tunable parameters live in `config.py`.
 
 ### Folders and Audio
 
-| Setting        | Default              | Description                |
-| -------------- | -------------------- | -------------------------- |
-| `FAMILY_DIR`   | `"family"`           | Registered family photos   |
-| `SNAPSHOT_DIR` | `"snapshots"`        | Unknown-person snapshots   |
-| `LOG_DIR`      | `"logs"`             | Security logs and database |
-| `SIREN_FILE`   | `"sounds/siren.wav"` | Path to siren WAV file     |
+| Setting        | Default              | Description                                                |
+| -------------- | -------------------- | ---------------------------------------------------------- |
+| `FAMILY_DIR`   | `"family"`           | Legacy photo folder (migrated into the vault on first run) |
+| `SNAPSHOT_DIR` | `"snapshots"`        | Unknown-person snapshots                                   |
+| `LOG_DIR`      | `"logs"`             | Security logs, events DB, and the encrypted vault          |
+| `SIREN_FILE`   | `"sounds/siren.wav"` | Path to siren WAV file                                     |
+
+### Encrypted Face Vault
+
+| Setting                        | Default             | Description                                                                               |
+| ------------------------------ | ------------------- | ----------------------------------------------------------------------------------------- |
+| `VAULT_KEY_SOURCE`             | `"keyfile"`         | `"keyfile"` = auto key in `logs/.vault.key`; `"passphrase"` = PBKDF2 key typed at startup |
+| `VAULT_KEY_FILE`               | `"logs/.vault.key"` | Key file path (keyfile mode)                                                              |
+| `VAULT_PBKDF2_ITERATIONS`      | `600000`            | PBKDF2 iteration count for passphrase mode                                                |
+| `VAULT_UNKNOWN_RETENTION_DAYS` | `30`                | Days before unknown-face records are tombstoned                                           |
+| `VAULT_MAX_UNKNOWN_PER_PERSON` | `20`                | Max unknown records kept per distinct intruder                                            |
+| `VAULT_UNKNOWN_MATCH_DISTANCE` | `0.42`              | Distance below which two unknown encodings are the same intruder                          |
+| `VAULT_VERIFY_ON_STARTUP`      | `True`              | Verify the HMAC chain at startup; fail closed on tampering                                |
 
 ---
 

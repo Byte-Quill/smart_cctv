@@ -3,8 +3,7 @@
 opencv-python
 face_recognition
 pygame
-numpy
-setuptools<81  # needed by pygame for pkg_resources until it migrates
+numpycryptography         # AES-256-GCM encryption for the face vaultsetuptools<81  # needed by pygame for pkg_resources until it migrates
 
 # ----------------------------------------------------------------------
 # OPTIONAL — YOLO animal/human scene analysis (false-alarm suppression).
