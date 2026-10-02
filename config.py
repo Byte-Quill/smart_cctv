@@ -340,6 +340,62 @@ MAX_BRIGHTNESS = 215
 MIN_ENCODING_DISTANCE = 0.25
 
 # ----------------------------------------------------------------------
+# 11. HUMAN BEHAVIOR TRACKING
+# ----------------------------------------------------------------------
+# cctv/behavior.py turns each track's trajectory into higher-level human
+# behavior: how fast someone moves, whether they loiter, and whether they
+# approach the camera. A per-track risk score then lets the system
+# respond faster to genuinely suspicious behavior (an unidentified person
+# who loiters or runs) without changing how family members are treated.
+# All of it is pure math on the boxes the tracker already produces, so it
+# costs almost nothing per frame.
+
+# Master switch. When False, behavior analysis is skipped entirely and
+# the system behaves exactly as before.
+BEHAVIOR_ENABLED = True
+
+# How many recent positions are kept per tracked person (the trajectory
+# window used for speed / loiter / approach estimation).
+BEHAVIOR_TRAJECTORY_LEN = 30
+
+# Motion-state thresholds, expressed in "face-heights per second" so they
+# are independent of resolution and of how close the person is. Below
+# WALK is STATIONARY; below RUN is WALKING; at or above RUN is RUNNING.
+BEHAVIOR_WALK_SPEED = 0.6
+BEHAVIOR_RUN_SPEED = 1.8
+
+# Loitering: present for at least this many seconds while staying within
+# a small area. The radius is measured in face-heights so it scales with
+# distance from the camera.
+BEHAVIOR_LOITER_SECONDS = 20.0
+BEHAVIOR_LOITER_RADIUS = 1.5
+
+# Approach / retreat: the face height must change by at least this
+# fraction across the trajectory window (bigger face = closer).
+BEHAVIOR_APPROACH_GROWTH = 0.25
+
+# Risk model — weights added into a 0..1 suspicion score.
+BEHAVIOR_RISK_UNKNOWN = 0.45     # baseline for an unidentified face
+BEHAVIOR_RISK_LOITER = 0.25      # added while loitering
+BEHAVIOR_RISK_RUN = 0.20         # added while running
+BEHAVIOR_RISK_APPROACH = 0.15    # added while approaching the camera
+BEHAVIOR_RISK_NIGHT_MULT = 1.3   # night security mode amplifies risk
+
+# Risk at/above which a track is "suspicious": the system logs a
+# BEHAVIOR_ALERT (rate-limited) and shortens the confirmation delay.
+BEHAVIOR_ALERT_RISK = 0.6
+
+# Faster unknown delay while a suspicious track is on screen (still
+# slower than night mode and a YOLO-confirmed human).
+BEHAVIOR_ALERT_DELAY_SECONDS = 3
+
+# Minimum seconds between two behavior log entries for the same track.
+BEHAVIOR_LOG_INTERVAL = 15
+
+# Draw each tracked person's recent path as a fading trail on the video.
+DRAW_TRAJECTORY = True
+
+# ----------------------------------------------------------------------
 # PERFORMANCE PROFILE OVERRIDES
 # ----------------------------------------------------------------------
 # Applied at import time AFTER every value above is set, so object names
@@ -373,6 +429,11 @@ if PERFORMANCE_MODE == "low":
     MOTION_SCALE = 0.2
     MOTION_BG_ALPHA = 0.08
     MOTION_THRESHOLD = 32.0
+
+    # 11. Human behavior tracking — a shorter trajectory window keeps the
+    # per-track memory footprint minimal on small devices. The behavior
+    # math itself is trivial, so it stays fully enabled.
+    BEHAVIOR_TRAJECTORY_LEN = 15
 
     # 7. Scene analysis (YOLO) — disable the huge model. The ultralytics
     # dependency and its detector object can then be omitted entirely,

@@ -11,6 +11,17 @@ _GREEN = (0, 255, 0)
 _RED = (0, 0, 255)
 _AMBER = (0, 255, 255)
 _WHITE = (255, 255, 255)
+_GRAY = (170, 170, 170)
+
+# Color per human-behavior label (see cctv/behavior.py). Kept here so the
+# behavior module stays free of any drawing concerns.
+_BEHAVIOR_COLORS = {
+    "LOITERING": _AMBER,
+    "RUNNING": _RED,
+    "APPROACHING": _YELLOW,
+    "WALKING": _GREEN,
+    "STATIONARY": _GRAY,
+}
 
 
 def draw_face_boxes(frame, faces) -> None:
@@ -39,6 +50,50 @@ def draw_face_boxes(frame, faces) -> None:
             frame, (lx, by + 6), (lx + bar_len, by + 14),
             bar_color, -1
         )
+
+
+def draw_behavior(frame, faces) -> None:
+    """Draw a human-behavior label under each tracked face.
+
+    ``faces`` is an iterable of ``((lx, ty, rx, by), text)`` in
+    full-resolution pixels; the color is chosen from the label itself
+    (see ``_BEHAVIOR_COLORS``). The label sits below the confidence bar,
+    with a dark outline so it stays readable on any background.
+    """
+    for ((lx, ty, rx, by), text) in faces:
+        if not text:
+            continue
+        color = _BEHAVIOR_COLORS.get(text, _WHITE)
+        y = by + 32
+        if y > frame.shape[0] - 4:
+            y = by - 10
+        cv2.putText(
+            frame, text, (lx, y),
+            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 3
+        )
+        cv2.putText(
+            frame, text, (lx, y),
+            cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1
+        )
+
+
+def draw_trajectory(frame, paths) -> None:
+    """Draw recent motion trails.
+
+    ``paths`` is an iterable of ``(points, color)`` where ``points`` is a
+    list of ``(x, y)`` full-resolution centroids, oldest first. Each
+    segment fades from dim (oldest) to bright (newest) so the direction
+    of travel is obvious, and the newest point gets a solid dot.
+    """
+    for points, color in paths:
+        count = len(points)
+        if count < 2:
+            continue
+        for i in range(1, count):
+            fade = i / count
+            segment = tuple(int(channel * fade) for channel in color)
+            cv2.line(frame, points[i - 1], points[i], segment, 2)
+        cv2.circle(frame, points[-1], 3, color, -1)
 
 
 def draw_countdown(frame, remaining: float) -> None:
