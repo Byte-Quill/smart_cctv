@@ -377,9 +377,21 @@ BEHAVIOR_APPROACH_GROWTH = 0.25
 # Risk model — weights added into a 0..1 suspicion score.
 BEHAVIOR_RISK_UNKNOWN = 0.45     # baseline for an unidentified face
 BEHAVIOR_RISK_LOITER = 0.25      # added while loitering
+BEHAVIOR_RISK_PACING = 0.30      # added while pacing back & forth (casing)
 BEHAVIOR_RISK_RUN = 0.20         # added while running
+BEHAVIOR_RISK_WALK = 0.05        # small nudge while walking (still benign)
 BEHAVIOR_RISK_APPROACH = 0.15    # added while approaching the camera
+BEHAVIOR_RISK_RETREAT = -0.10    # leaving the scene lowers suspicion
 BEHAVIOR_RISK_NIGHT_MULT = 1.3   # night security mode amplifies risk
+
+# Pacing detection: this many lateral direction reversals inside the recent
+# window counts as pacing (back-and-forth casing walk).
+BEHAVIOR_PACING_SWITCHES = 3
+BEHAVIOR_PACING_WINDOW = 20
+
+# Speed-estimation window: recent per-sample speeds averaged for the EMA
+# velocity (frames). Larger = smoother speed, slower to react to a sprint.
+BEHAVIOR_VEL_WINDOW = 5
 
 # Risk at/above which a track is "suspicious": the system logs a
 # BEHAVIOR_ALERT (rate-limited) and shortens the confirmation delay.

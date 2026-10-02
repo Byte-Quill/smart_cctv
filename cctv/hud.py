@@ -17,8 +17,10 @@ _GRAY = (170, 170, 170)
 # behavior module stays free of any drawing concerns.
 _BEHAVIOR_COLORS = {
     "LOITERING": _AMBER,
+    "PACING": (255, 128, 0),  # orange — pacing/casing, one step below red
     "RUNNING": _RED,
     "APPROACHING": _YELLOW,
+    "RETREATING": (255, 128, 128),  # soft red — leaving, de-escalating
     "WALKING": _GREEN,
     "STATIONARY": _GRAY,
 }

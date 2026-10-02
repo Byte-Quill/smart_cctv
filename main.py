@@ -48,6 +48,7 @@ import cv2
 
 from config import (
     FACE_TOLERANCE,
+    FACE_TOLERANCE,
     UNKNOWN_CONFIRMATIONS,
     UNKNOWN_DELAY_SECONDS,
     NIGHT_UNKNOWN_DELAY_SECONDS,
@@ -67,6 +68,11 @@ from config import (
     LOG_DIR,
     ANIMAL_DETECTION_ENABLED,
     UNKNOWN_HUMAN_DELAY_SECONDS,
+    BEHAVIOR_ENABLED,
+    BEHAVIOR_ALERT_DELAY_SECONDS,
+    BEHAVIOR_ALERT_RISK,
+    BEHAVIOR_LOG_INTERVAL,
+    DRAW_TRAJECTORY,
     SHOW_FPS,
     SIREN_RETRIGGER_COOLDOWN,
     SIREN_DAY_DURATION,
@@ -88,6 +94,8 @@ from cctv.faces import (
 )
 from cctv.hud import (
     draw_face_boxes,
+    draw_behavior,
+    draw_trajectory,
     draw_countdown,
     draw_family_text,
     draw_mode,
@@ -99,6 +107,8 @@ from cctv.hud import (
 from cctv.enroll import run_enrollment
 from cctv.motion import MotionDetector
 from cctv.tracking import match_tracks
+from cctv import behavior as behavior
+from cctv.behavior import BEHAVIOR_SUSPICIOUS_LABELS, Behavior
 from cctv.siren import Siren
 from cctv.yolo import ObjectDetector
 from cctv.storage import (
@@ -182,6 +192,8 @@ def main():
         scale=MOTION_SCALE,
         bg_alpha=MOTION_BG_ALPHA,
     )
+    behavior_analyzer = BehaviorAnalyzer(enabled=BEHAVIOR_ENABLED)
+    last_behavior_log: dict = {}  # track_id -> timestamp of last BEHAVIOR_ALERT
 
     known_encodings, known_names, vault = load_family_from_vault(
         cipher=vault_cipher
@@ -225,6 +237,11 @@ def main():
 
     tracked_faces = {}
     frame_counter = 0
+
+    # Human behavior tracking: pure math on the boxes the tracker already
+    # produced (microseconds/frame). The module is stateless — each track
+    # carries its own trajectory — so there is nothing to reset or leak.
+    last_behavior_log = {}  # track_id -> timestamp of last BEHAVIOR_ALERT
 
     # FPS measurement: smoothed frames-per-second for the HUD overlay
     fps = 0.0
@@ -423,6 +440,21 @@ def main():
             recognized_people = []
             unknown_faces = []
             displayed_faces = []  # (fullres_location, label, color, confidence)
+            behavior_faces = []  # ((lx, ty, rx, by), behavior label)
+            trail_paths = []  # [([fullres (x, y), ...], color), ...]
+
+            # Behavior analysis runs on the already-tracked boxes — pure
+            # math, microseconds per frame — so every person gets a live
+            # motion state (STATIONARY/WALKING/RUNNING), flags (LOITERING /
+            # PACING / APPROACHING / RETREATING), travel direction and a
+            # 0..1 risk score. Disabled -> {} -> identical to the old path.
+            # (night_mode is resolved fresh below each frame for the delay
+            # logic, so pass night_mode=False here and let the suspicious
+            # path below reuse these labels without a second analyze call.)
+            behaviors = behavior.analyze(
+                tracked_faces, night_mode=False
+            )
+            _night_risk = None  # (tid -> Behavior) recomputed after dark
 
             for tid, track in tracked_faces.items():
                 final_name = track.majority_name
@@ -434,6 +466,25 @@ def main():
                     int(c / DETECTION_SCALE)
                     for c in (left, top, right, bottom)
                 )
+
+                b = behaviors.get(tid)
+                if b is not None:
+                    behavior_faces.append(
+                        ((fleft, ftop, fright, fbottom), b.label)
+                    )
+                    if DRAW_TRAJECTORY and len(track.trajectory) >= 2:
+                        trail_paths.append((
+                            [
+                                (
+                                    int(x / DETECTION_SCALE),
+                                    int(y / DETECTION_SCALE),
+                                )
+                                for x, y, _t, _h in track.trajectory
+                            ],
+                            (0, 255, 0)
+                            if final_name != "UNKNOWN"
+                            else (0, 0, 255),
+                        ))
 
                 if final_name == "UNKNOWN":
                     unknown_faces.append(track.last_seen)
@@ -454,6 +505,15 @@ def main():
             # Draw all tracked faces with smoothed boxes
             draw_face_boxes(frame, displayed_faces)
 
+            # Behavior layer: motion trails first (under the boxes), then one
+            # explainable label per person ("LOITERING", "PACING", "RUNNING",
+            # "APPROACHING", "WALKING", "STATIONARY", ...). Drawn for family
+            # too — behavior describes *movement*, not suspicion.
+            if trail_paths:
+                draw_trajectory(frame, trail_paths)
+            if behavior_faces:
+                draw_behavior(frame, behavior_faces)
+
             # Prominent red banner whenever an unknown face is on screen
             if unknown_faces:
                 draw_unknown_alert(frame)
@@ -472,14 +532,89 @@ def main():
                 animal_seen, human_seen = False, False
 
             # Shorter confirmation delay in night security mode,
-            # fastest delay when YOLO confirms a human
+            # fastest delay when YOLO confirms a human. A suspicious
+            # behavior (loitering / pacing / running / approaching at
+            # BEHAVIOR_ALERT_RISK+) also speeds the siren up — still slower
+            # than night mode and a YOLO-confirmed human. Family tracks are
+            # never suspicious (no UNKNOWN baseline in their score), so
+            # family behavior can never shorten the alarm delay.
+            # (night_mode is resolved fresh here each frame and was already
+            # passed into the behavior analysis above — no recompute.)
             night_mode = is_night_mode()
+            if night_mode and BEHAVIOR_ENABLED and behaviors:
+                # Night amplifies risk: only the *score* needs the night
+                # multiplier, so recompute just the scalar per track instead
+                # of re-running the whole trajectory analysis.
+                risk_behaviors = {}
+                for _tid, _b in behaviors.items():
+                    _r = behavior.risk_score(
+                        tracked_faces[_tid].majority_name,
+                        _b.motion,
+                        _b.flags,
+                        night_mode=True,
+                    )
+                    if _r != _b.risk:
+                        risk_behaviors[_tid] = Behavior(
+                            motion=_b.motion,
+                            flags=_b.flags,
+                            risk=_r,
+                            norm_speed=_b.norm_speed,
+                            direction_deg=_b.direction_deg,
+                            dwell_seconds=_b.dwell_seconds,
+                            direction=_b.direction,
+                            dwell_tier=_b.dwell_tier,
+                            switches=_b.switches,
+                        )
+                    else:
+                        risk_behaviors[_tid] = _b
+                behaviors = risk_behaviors
+            suspicious = any(
+                b.is_suspicious
+                for b in behaviors.values()
+            )
             if night_mode:
                 active_delay = NIGHT_UNKNOWN_DELAY_SECONDS
             elif human_seen:
                 active_delay = UNKNOWN_HUMAN_DELAY_SECONDS
+            elif suspicious:
+                active_delay = BEHAVIOR_ALERT_DELAY_SECONDS
             else:
                 active_delay = UNKNOWN_DELAY_SECONDS
+
+            # Rate-limited behavior alerts: one BEHAVIOR_ALERT per track per
+            # BEHAVIOR_LOG_INTERVAL, only for genuinely suspicious labels.
+            # This is the audit trail behind a faster siren — "why did the
+            # delay shorten?" is answered in events.db / security.log.
+            if BEHAVIOR_ENABLED and behaviors:
+                now_b = time.time()
+                for tid, track in tracked_faces.items():
+                    b = behaviors.get(tid)
+                    if (
+                        b is None
+                        or b.label not in BEHAVIOR_SUSPICIOUS_LABELS
+                        or not b.is_suspicious
+                    ):
+                        continue
+                    if now_b - last_behavior_log.get(tid, 0.0) >= BEHAVIOR_LOG_INTERVAL:
+                        log_event(
+                            "BEHAVIOR_ALERT",
+                            person=(
+                                None
+                                if track.majority_name == "UNKNOWN"
+                                else track.majority_name
+                            ),
+                            snapshot=(
+                                f"track={tid} {b.describe()} "
+                                f"dir={b.direction or '-'} "
+                                f"dwell_tier={b.dwell_tier}"
+                            ),
+                        )
+                        last_behavior_log[tid] = now_b
+                # Drop log timestamps for expired tracks so the dict cannot
+                # grow without bound over a long-running session.
+                for tid in list(last_behavior_log):
+                    if tid not in tracked_faces:
+                        del last_behavior_log[tid]
 
             if unknown_faces:
 
