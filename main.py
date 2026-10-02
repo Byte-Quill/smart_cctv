@@ -344,7 +344,14 @@ def main():
             # aged out gradually (via match_tracks) so stale boxes fade away.
             has_motion = not MOTION_ENABLED or motion.has_motion(frame)
 
-            if has_motion:
+            # Find all faces and their encodings in this frame.
+            # Detection runs only every TRACKING_SKIP_FRAMES frames and tracks
+            # bridge the gaps, so the costly preprocessing below (enhance +
+            # resize + color convert) is done ONLY on the frames that actually
+            # consume it. Doing it on every motion frame would burn CPU on
+            # frames whose result is thrown away — the display still renders
+            # every raw frame, so the video stays at full camera speed.
+            if has_motion and frame_counter % TRACKING_SKIP_FRAMES == 0:
 
                 # ── Image enhancement ──
                 enhanced = enhance_frame(frame)
@@ -362,21 +369,14 @@ def main():
                     cv2.COLOR_BGR2RGB
                 )
 
-            else:
-                rgb_frame = None
+                # Full-resolution frame for CNN fallback. Only converted when
+                # the fallback is enabled; the low profile leaves it off, so
+                # nothing is converted.
+                rgb_full = (
+                    cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    if ENABLE_CNN_FALLBACK else None
+                )
 
-            # Full-resolution frame for CNN fallback. Only converted when the
-            # fallback is enabled AND something is moving — otherwise this is
-            # wasted work on every idle frame.
-            rgb_full = (
-                cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                if (ENABLE_CNN_FALLBACK and has_motion) else None
-            )
-
-            # Find all faces and their encodings in this frame.
-            # Skip detection on idle and non-detection frames, rely on track
-            # persistence in between.
-            if has_motion and frame_counter % TRACKING_SKIP_FRAMES == 0:
                 locations, encodings = detect_faces_enhanced(
                     rgb_frame, rgb_full
                 )

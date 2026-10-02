@@ -409,6 +409,7 @@ Set `PERFORMANCE_MODE` in `config.py` to match your hardware. The same pipeline 
 
 - 🎞️ **No frozen frames** — the motion gate skips heavy processing but still displays every camera frame, so the window never freezes when idle.
 - ⏱️ **No display lag** — the camera driver queue is capped at one frame (`CAP_PROP_BUFFERSIZE = 1`), so the view stays in real time.
+- 🧵 **Full camera rate** — frames are captured on a background thread (`cctv/hardware.py`), so per-frame work (enhance / detect / draw) runs *inside* the camera's frame interval instead of being added on top of it. The display runs at the camera's true FPS rather than "camera FPS − processing time".
 - 📊 **Live FPS counter** — top-right corner (toggle with `SHOW_FPS`); green at 15+ FPS, amber 8–15, red below 8.
 
 On a low-end box, start with `low`. If the FPS counter stays green and you want more accuracy, step up to `balanced`.

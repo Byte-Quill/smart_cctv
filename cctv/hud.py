@@ -134,16 +134,24 @@ def draw_unknown_alert(frame) -> None:
     x = (frame.shape[1] - w) // 2
     y = 35
 
-    # Dark translucent backdrop so the red text stays readable
-    overlay = frame.copy()
-    cv2.rectangle(
-        overlay,
-        (x - 12, y - h - 10),
-        (x + w + 12, y + 10),
-        (0, 0, 60),
-        -1
-    )
-    cv2.addWeighted(overlay, 0.65, frame, 0.35, 0, frame)
+    # Dark translucent backdrop so the red text stays readable. Blend only
+    # the banner's rectangle (clipped to the frame): pixel-identical to
+    # blending a full-frame copy, but far less work during an alert.
+    # cv2.rectangle fills inclusively of the corner pixel, so the region is
+    # one pixel larger than the (x - 12 .. x + w + 12) span.
+    rx0 = max(0, x - 12)
+    ry0 = max(0, y - h - 10)
+    rx1 = min(frame.shape[1], x + w + 12 + 1)
+    ry1 = min(frame.shape[0], y + 10 + 1)
+    if rx1 > rx0 and ry1 > ry0:
+        roi = frame[ry0:ry1, rx0:rx1]
+        overlay = roi.copy()
+        cv2.rectangle(
+            overlay, (0, 0), (rx1 - rx0, ry1 - ry0), (0, 0, 60), -1
+        )
+        frame[ry0:ry1, rx0:rx1] = cv2.addWeighted(
+            overlay, 0.65, roi, 0.35, 0.0
+        )
 
     cv2.putText(
         frame,
@@ -177,10 +185,21 @@ def draw_add_button(frame, hover: bool = False):
     fill = (0, 140, 0) if hover else (0, 100, 0)
     border = _GREEN if hover else (0, 180, 0)
 
-    # Slightly translucent fill so the button reads as a UI element
-    overlay = frame.copy()
-    cv2.rectangle(overlay, (x0, y0), (x1, y1), fill, -1)
-    cv2.addWeighted(overlay, 0.85, frame, 0.15, 0, frame)
+    # Slightly translucent fill so the button reads as a UI element.
+    # Only the button's rectangle is copied and blended: this is
+    # pixel-identical to blending a full-frame copy (outside the rectangle
+    # the blend is a no-op), but avoids copying/blending the whole frame
+    # on every single frame. The blend result is contiguous and written
+    # back with numpy, so OpenCV never gets an aliased/strided dst.
+    bx0, by0 = max(0, x0), max(0, y0)
+    bx1, by1 = min(frame.shape[1], x1 + 1), min(frame.shape[0], y1 + 1)
+    if bx1 > bx0 and by1 > by0:
+        roi = frame[by0:by1, bx0:bx1]
+        overlay = roi.copy()
+        cv2.rectangle(overlay, (0, 0), (bx1 - bx0, by1 - by0), fill, -1)
+        frame[by0:by1, bx0:bx1] = cv2.addWeighted(
+            overlay, 0.85, roi, 0.15, 0.0
+        )
     cv2.rectangle(frame, (x0, y0), (x1, y1), border, 2)
 
     cv2.putText(
